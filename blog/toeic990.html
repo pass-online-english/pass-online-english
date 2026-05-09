@@ -1,1 +1,533 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新形式TOEIC990点の勉強法 | Passオンライン英語</title>
+  <meta name="description" content="新形式TOEICで990点を取得した講師が、実際の勉強法・教材・学習スケジュールを公開します。">
 
+  <!-- OGP -->
+  <meta property="og:title" content="新形式TOEIC990点の勉強法 | Passオンライン英語">
+  <meta property="og:description" content="新形式TOEICで990点を取得した講師が、実際の勉強法・教材・学習スケジュールを公開します。">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/style.css">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-MYKHP4K4QN"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-MYKHP4K4QN');
+  </script>
+
+  <style>
+    /* ── ブログ記事専用スタイル ── */
+    .blog-hero {
+      background: linear-gradient(145deg, var(--navy) 0%, var(--navy-mid) 60%, #1e4080 100%);
+      color: var(--white);
+      padding: 56px 0 48px;
+    }
+    .blog-hero-inner { max-width: 720px; margin: 0 auto; padding: 0 var(--gutter); }
+
+    .blog-breadcrumb {
+      font-size: 12px;
+      color: rgba(255,255,255,.55);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .blog-breadcrumb a {
+      color: rgba(255,255,255,.55);
+      text-decoration: none;
+    }
+    .blog-breadcrumb a:hover { color: var(--gold-light); }
+    .blog-breadcrumb span { color: rgba(255,255,255,.35); }
+
+    .blog-tag {
+      display: inline-block;
+      background: rgba(201,168,76,.2);
+      border: 1px solid var(--gold);
+      color: var(--gold-light);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      padding: 3px 12px;
+      border-radius: 100px;
+      margin-bottom: 16px;
+    }
+
+    .blog-title {
+      font-family: var(--font-serif);
+      font-size: clamp(22px, 5.5vw, 34px);
+      font-weight: 700;
+      line-height: 1.45;
+      letter-spacing: .02em;
+      margin-bottom: 20px;
+    }
+
+    .blog-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      color: rgba(255,255,255,.55);
+    }
+    .blog-meta-author {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .blog-meta-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--gold);
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* ── 記事本文エリア ── */
+    .blog-body {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px var(--gutter) 80px;
+    }
+
+    /* リード文 */
+    .blog-lead {
+      font-size: 16px;
+      line-height: 1.9;
+      color: var(--text-main);
+      border-left: 4px solid var(--gold);
+      padding: 16px 20px;
+      background: linear-gradient(135deg, #fdf8ee 0%, #fff 100%);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      margin-bottom: 48px;
+    }
+
+    /* 目次 */
+    .blog-toc {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      padding: 20px 24px;
+      margin-bottom: 48px;
+    }
+    .blog-toc-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      letter-spacing: .06em;
+      margin-bottom: 12px;
+    }
+    .blog-toc ol {
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .blog-toc li { font-size: 13px; }
+    .blog-toc a {
+      color: var(--navy-light);
+      text-decoration: none;
+    }
+    .blog-toc a:hover { color: var(--gold); text-decoration: underline; }
+
+    /* 見出し */
+    .blog-body h2 {
+      font-family: var(--font-serif);
+      font-size: clamp(18px, 4vw, 24px);
+      font-weight: 700;
+      color: var(--navy);
+      border-bottom: 2px solid var(--navy);
+      padding-bottom: 8px;
+      margin: 48px 0 20px;
+      letter-spacing: .02em;
+    }
+    .blog-body h2::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: var(--gold);
+      border-radius: 50%;
+      margin-right: 10px;
+      vertical-align: middle;
+      margin-bottom: 3px;
+    }
+
+    .blog-body h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 28px 0 12px;
+      padding-left: 12px;
+      border-left: 3px solid var(--gold);
+    }
+
+    /* 本文 */
+    .blog-body p {
+      font-size: 15px;
+      line-height: 1.9;
+      color: var(--text-main);
+      margin-bottom: 20px;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    /* リスト */
+    .blog-body ul,
+    .blog-body ol {
+      padding-left: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .blog-body ul li {
+      font-size: 14px;
+      line-height: 1.75;
+      color: var(--text-main);
+      padding-left: 20px;
+      position: relative;
+    }
+    .blog-body ul li::before {
+      content: '─';
+      position: absolute;
+      left: 0;
+      color: var(--gold);
+      font-size: 11px;
+      top: 4px;
+    }
+    .blog-body ol { counter-reset: blog-ol; }
+    .blog-body ol li {
+      font-size: 14px;
+      line-height: 1.75;
+      color: var(--text-main);
+      padding-left: 28px;
+      position: relative;
+      counter-increment: blog-ol;
+    }
+    .blog-body ol li::before {
+      content: counter(blog-ol);
+      position: absolute;
+      left: 0;
+      width: 20px;
+      height: 20px;
+      background: var(--navy);
+      color: var(--white);
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      top: 2px;
+    }
+
+    /* コールアウトボックス */
+    .blog-callout {
+      background: linear-gradient(135deg, #eef3fa 0%, #f5f0e8 100%);
+      border: 1px solid var(--gray-200);
+      border-left: 4px solid var(--navy-light);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 16px 20px;
+      margin: 24px 0;
+      font-size: 14px;
+      line-height: 1.8;
+      color: var(--text-main);
+    }
+    .blog-callout strong { color: var(--navy); }
+
+    /* 教材紹介カード */
+    .blog-book {
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      margin: 20px 0;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      box-shadow: var(--shadow-sm);
+    }
+    .blog-book-icon {
+      width: 48px;
+      height: 64px;
+      background: var(--navy);
+      border-radius: 4px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .blog-book-body { flex: 1; }
+    .blog-book-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+    .blog-book-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    /* スコア表示 */
+    .blog-score-box {
+      background: var(--navy);
+      color: var(--white);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      text-align: center;
+      margin: 28px 0;
+    }
+    .blog-score-label {
+      font-size: 12px;
+      letter-spacing: .1em;
+      color: var(--gold-light);
+      margin-bottom: 8px;
+    }
+    .blog-score-num {
+      font-family: var(--font-serif);
+      font-size: 56px;
+      font-weight: 700;
+      color: var(--gold);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .blog-score-sub {
+      font-size: 13px;
+      color: rgba(255,255,255,.6);
+    }
+
+    /* 区切り線 */
+    .blog-divider {
+      border: none;
+      border-top: 1px solid var(--gray-200);
+      margin: 40px 0;
+    }
+
+    /* 記事末CTA */
+    .blog-cta {
+      background: linear-gradient(145deg, var(--navy) 0%, var(--navy-mid) 100%);
+      border-radius: var(--radius-lg);
+      padding: 32px 24px;
+      text-align: center;
+      margin-top: 56px;
+    }
+    .blog-cta-label {
+      font-size: 11px;
+      letter-spacing: .1em;
+      color: var(--gold-light);
+      margin-bottom: 10px;
+    }
+    .blog-cta-title {
+      font-family: var(--font-serif);
+      font-size: clamp(18px, 4vw, 24px);
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .blog-cta-sub {
+      font-size: 13px;
+      color: rgba(255,255,255,.7);
+      line-height: 1.8;
+      margin-bottom: 24px;
+    }
+    .blog-cta .btn { margin: 0 auto; }
+
+    /* ── LP戻りリンク ── */
+    .blog-back {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 0 var(--gutter) 16px;
+    }
+    .blog-back a {
+      font-size: 13px;
+      color: var(--navy-light);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .blog-back a:hover { color: var(--gold); }
+  </style>
+</head>
+<body>
+
+  <!-- ヘッダー（LPと共通） -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="../index.html" class="logo">
+        <span class="logo-en">Pass</span><span class="logo-ja">オンライン英語</span>
+      </a>
+      <nav class="header-nav" aria-label="メインナビゲーション">
+        <a href="../index.html#strengths">特長</a>
+        <a href="../index.html#lessons">コース</a>
+        <a href="../index.html#pricing">料金</a>
+        <a href="../index.html#instructor">講師</a>
+        <a href="../index.html#flow">受講の流れ</a>
+        <a href="../index.html#contact" class="nav-cta">無料体験</a>
+      </nav>
+      <a href="../index.html#contact" class="btn btn-sm header-cta-sp">無料体験（0円）</a>
+    </div>
+  </header>
+
+  <!-- 記事ヒーロー -->
+  <div class="blog-hero">
+    <div class="blog-hero-inner">
+      <div class="blog-breadcrumb">
+        <a href="../index.html">トップ</a>
+        <span>›</span>
+        <span>TOEIC勉強法</span>
+      </div>
+      <div class="blog-tag">TOEIC 勉強法</div>
+      <h1 class="blog-title">新形式TOEICで990点を<br>取るまでの勉強法</h1>
+      <div class="blog-meta">
+        <div class="blog-meta-author">
+          <span>Pass オンライン英語 講師</span>
+        </div>
+        <div class="blog-meta-dot"></div>
+        <span><!-- 公開日をここに入れる --></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 記事本文 -->
+  <main>
+    <div class="blog-body">
+
+      <!-- リード文 -->
+      <p class="blog-lead">
+        <!-- リード文（2〜3文）をここに書く。読者が「読み続けたい」と思える一文を最初に。 -->
+        ここにリード文が入ります。
+      </p>
+
+      <!-- 目次 -->
+      <nav class="blog-toc" aria-label="目次">
+        <div class="blog-toc-title">目次</div>
+        <ol>
+          <li><a href="#score">当時のスコアと受験時の状況</a></li>
+          <li><a href="#strategy">全体の勉強戦略</a></li>
+          <li><a href="#listening">リスニング対策</a></li>
+          <li><a href="#reading">リーディング対策</a></li>
+          <li><a href="#materials">使った教材一覧</a></li>
+          <li><a href="#schedule">学習スケジュール</a></li>
+          <li><a href="#tips">本番で意識したこと</a></li>
+        </ol>
+      </nav>
+
+      <!-- セクション1 -->
+      <h2 id="score">当時のスコアと受験時の状況</h2>
+      <p><!-- 本文をここに書く --></p>
+
+      <div class="blog-score-box">
+        <div class="blog-score-label">NEW TOEIC L&R</div>
+        <div class="blog-score-num">990</div>
+        <div class="blog-score-sub">Listening 495 / Reading 495</div>
+      </div>
+
+      <p><!-- スコアの背景・受験回数・当時の英語レベルなどをここに書く --></p>
+
+      <!-- セクション2 -->
+      <h2 id="strategy">全体の勉強戦略</h2>
+      <p><!-- 本文をここに書く --></p>
+
+      <div class="blog-callout">
+        <strong>ポイント：</strong><!-- ここにキーメッセージを1文で --></div>
+
+      <!-- セクション3 -->
+      <h2 id="listening">リスニング対策</h2>
+      <p><!-- 本文をここに書く --></p>
+
+      <h3>音読・シャドーイング</h3>
+      <p><!-- 本文をここに書く --></p>
+
+      <h3>公式問題集の使い方</h3>
+      <p><!-- 本文をここに書く --></p>
+
+      <!-- セクション4 -->
+      <h2 id="reading">リーディング対策</h2>
+      <p><!-- 本文をここに書く --></p>
+
+      <h3>Part 5・6（文法・語彙）</h3>
+      <p><!-- 本文をここに書く --></p>
+
+      <h3>Part 7（長文読解）</h3>
+      <p><!-- 本文をここに書く --></p>
+
+      <!-- セクション5 -->
+      <h2 id="materials">使った教材一覧</h2>
+      <p><!-- 教材の全体像を一言で --></p>
+
+      <div class="blog-book">
+        <div class="blog-book-icon">📗</div>
+        <div class="blog-book-body">
+          <div class="blog-book-title">教材名をここに</div>
+          <p class="blog-book-desc">この教材をどう使ったか・どこが良かったかをここに書く。</p>
+        </div>
+      </div>
+
+      <div class="blog-book">
+        <div class="blog-book-icon">📘</div>
+        <div class="blog-book-body">
+          <div class="blog-book-title">教材名をここに</div>
+          <p class="blog-book-desc">この教材をどう使ったか・どこが良かったかをここに書く。</p>
+        </div>
+      </div>
+
+      <div class="blog-book">
+        <div class="blog-book-icon">📙</div>
+        <div class="blog-book-body">
+          <div class="blog-book-title">教材名をここに</div>
+          <p class="blog-book-desc">この教材をどう使ったか・どこが良かったかをここに書く。</p>
+        </div>
+      </div>
+
+      <!-- セクション6 -->
+      <h2 id="schedule">学習スケジュール</h2>
+      <p><!-- 期間・1日の学習時間・週のルーティンなどをここに書く --></p>
+
+      <!-- セクション7 -->
+      <h2 id="tips">本番で意識したこと</h2>
+      <p><!-- 時間配分・マークの仕方・メンタルなどをここに書く --></p>
+
+      <hr class="blog-divider">
+
+      <!-- 記事末CTA -->
+      <div class="blog-cta">
+        <div class="blog-cta-label">TOEIC対策のご相談は</div>
+        <div class="blog-cta-title">無料体験レッスンで<br>学習プランをご提案します</div>
+        <p class="blog-cta-sub">新形式TOEICで990点を取得した経験をもとに、<br>あなたの現状と目標に合った学習プランをお伝えします。</p>
+        <a href="../index.html#contact" class="btn btn-primary btn-lg">無料体験レッスン（0円）を申し込む</a>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- フッター -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-logo">
+        <span class="logo-en">Pass</span><span class="logo-ja">オンライン英語</span>
+      </div>
+      <p class="footer-copy">&copy; 2026 Passオンライン英語. All rights reserved.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
