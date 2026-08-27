@@ -1,0 +1,47 @@
+# ───────────────────────────────────────────────
+# 認証情報 — 絶対にコミットしないこと
+# ───────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# サービスアカウント鍵 / OAuth クライアントシークレット / ADC
+*service-account*.json
+*service_account*.json
+*credential*.json
+*credentials*.json
+client_secret*.json
+application_default_credentials.json
+*-key.json
+*.pem
+*.p12
+*.key
+secrets/
+.credentials/
+.secrets/
+
+# gcloud のローカル設定が誤って持ち込まれた場合の保険
+.config/gcloud/
+gcloud/
+
+# ───────────────────────────────────────────────
+# 分析ツールの出力（実データを含むためコミットしない）
+# ───────────────────────────────────────────────
+reports/
+
+# ───────────────────────────────────────────────
+# Node
+# ───────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.npm/
+
+# ───────────────────────────────────────────────
+# OS / エディタ
+# ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
