@@ -71,10 +71,22 @@ gcloud auth application-default set-quota-project <あなたのプロジェク�
 認証情報は `~/.config/gcloud/application_default_credentials.json`
 （Windows は `%APPDATA%\gcloud\`）に保存されます。**リポジトリ内には保存されません。**
 
+Google Cloud Console 側で必要なのは **API の有効化だけ**です。
+「認証情報」ページでサービスアカウントを作る必要はありません。
+
+> **「サービス アカウント キーの作成が無効になっています」と表示された場合**
+>
+> 組織ポリシー `constraints/iam.disableServiceAccountKeyCreation` により、
+> 秘密鍵 JSON の発行が禁止されています（近年の Google Cloud では新規組織の既定値）。
+> **ADC はそもそも鍵ファイルを作らない方式なので、この制限には該当しません。**
+> このメッセージは無視して、上記の `gcloud auth application-default login` に進んでください。
+
 <details>
 <summary>サービスアカウント鍵を使う場合（代替手段）</summary>
 
 複数人で共有する、CI で回すなどの理由でサービスアカウントが必要な場合のみ。
+なお、上記の組織ポリシーが有効な環境では**この方法は使えません**（鍵を発行できないため）。
+その場合は ADC を使うか、組織管理者にポリシーの例外設定を依頼してください。
 
 1. Google Cloud Console →「APIとサービス」→「認証情報」→「+ 認証情報を作成」→「サービスアカウント」
    ロールは**選択しません**（GCP の IAM ロールは不要。権限は GA4 / Search Console 側で個別に付与します）
