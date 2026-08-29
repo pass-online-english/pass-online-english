@@ -20,6 +20,7 @@ GA4 と Google Search Console のデータを取得・分析するツールを�
 
 ```bash
 npm install
+npm run analytics:login               # ブラウザ認証（初回のみ / gcloud 不要）
 npm run analytics:doctor              # 設定と疎通の確認
 npm run analytics:report -- --days 28 # 統合レポートの生成
 ```
@@ -28,6 +29,7 @@ npm run analytics:report -- --days 28 # 統合レポートの生成
 
 | コマンド | 内容 |
 |---|---|
+| `npm run analytics:login` | ブラウザ認証（初回・再認証時のみ） |
 | `npm run analytics:doctor` | 設定・認証・API疎通の確認 |
 | `npm run analytics:schema` | GA4 のディメンション/指標名の有効性を検証 |
 | `npm run analytics:ga4` | GA4 データの取得 |
@@ -38,7 +40,8 @@ npm run analytics:report -- --days 28 # 統合レポートの生成
 
 ### 認証情報の取り扱い
 
-- 認証情報は**リポジトリ外**に保存します（ADC: `~/.config/gcloud/`）
+- 認証情報は**リポジトリ外**に保存します（`~/.config/pass-analytics/`、パーミッション600）
+- サービスアカウントの秘密鍵は作りません（組織ポリシーで鍵作成が禁止されていても利用可能）
 - `.env` および credential ファイルは `.gitignore` で除外済みです
 - 分析結果の出力先 `reports/` も Git 管理外です
 - API のスコープは読み取り専用のみを要求しています

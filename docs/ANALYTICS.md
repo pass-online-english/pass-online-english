@@ -45,13 +45,74 @@ npm install      # 依存パッケージをインストール
    - `Google Analytics Data API`
    - `Google Search Console API`
 
-3. **gcloud CLI をインストールする**
-   [インストール手順](https://cloud.google.com/sdk/docs/install)
+### 1-3. 認証（ブラウザ認証 / 推奨）
 
-### 1-3. 認証（ADC / ユーザー認証）
+**gcloud CLI のインストールは不要**です。ブラウザ操作とコマンド1回で完了します。
+ご自身の Google アカウント（GA4 と Search Console をすでに閲覧できるアカウント）で認証するため、
+GA4 / Search Console 側での権限付与作業も不要です。
 
-サービスアカウントの秘密鍵ファイルを作らない方式です。ご自身の Google アカウント
-（GA4 と Search Console の権限をすでに持っているアカウント）で認証します。
+サービスアカウントの秘密鍵は作りません。組織ポリシーで
+「サービス アカウント キーの作成が無効になっています」と表示される環境でも使えます。
+
+#### ① OAuth 同意画面を設定する（初回のみ）
+
+Google Cloud Console →「APIとサービス」→「OAuth 同意画面」
+（新しい UI では「Google Auth Platform」→「ブランディング」/「対象」）
+
+| 項目 | 設定値 |
+|---|---|
+| User Type / 対象 | **内部（Internal）** を選べるなら内部を選ぶ。選べない場合は外部（External） |
+| アプリ名 | 任意（例: `Pass Analytics`） |
+| ユーザーサポートメール | ご自身のメールアドレス |
+| デベロッパーの連絡先情報 | ご自身のメールアドレス |
+
+> **「外部」しか選べない場合**
+> 公開ステータスが「テスト」のままだと、**リフレッシュトークンが7日で失効**します
+> （7日ごとに `npm run analytics:login` をやり直すことになります）。
+> 「テストユーザー」にご自身のアカウントを追加してください。
+> Google Workspace アカウントであれば「内部」を選べ、この制限はありません。
+
+#### ② OAuth クライアント ID を作る
+
+「APIとサービス」→「認証情報」→「+ 認証情報を作成」→「**OAuth クライアント ID**」
+
+- アプリケーションの種類: **デスクトップ アプリ**
+- 名前: 任意（例: `pass-analytics-local`）
+
+作成すると **クライアントID** と **クライアントシークレット** が表示されます。
+
+> これは**サービスアカウント鍵ではありません**。
+> 組織ポリシー `constraints/iam.disableServiceAccountKeyCreation` は
+> サービスアカウントの秘密鍵 JSON のみを禁止するもので、OAuth クライアントは作成できます。
+
+#### ③ `.env` に設定してログイン
+
+```bash
+cp .env.example .env
+```
+
+`.env` に②の2つの値を貼り付けます。
+
+```
+GOOGLE_OAUTH_CLIENT_ID=xxxxx.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=xxxxx
+```
+
+```bash
+npm run analytics:login
+```
+
+ブラウザが開くので、GA4 と Search Console を閲覧できる Google アカウントで許可してください。
+「このアプリは Google で確認されていません」と出た場合は、
+「詳細」→「(アプリ名) に移動」で進めます（ご自身が作成したアプリのためです）。
+
+トークンは **`~/.config/pass-analytics/oauth-token.json`**（パーミッション 600）に保存されます。
+**リポジトリ内には保存されません。**
+
+<details>
+<summary>gcloud の ADC を使う場合（代替手段1）</summary>
+
+gcloud CLI をすでに入れている、または入れられる場合はこちらでも構いません。
 
 ```bash
 gcloud auth login
@@ -69,24 +130,19 @@ gcloud auth application-default set-quota-project <あなたのプロジェク�
 > GA4 / Search Console の API を呼んだ時点で「スコープ不足」エラーになります。
 
 認証情報は `~/.config/gcloud/application_default_credentials.json`
-（Windows は `%APPDATA%\gcloud\`）に保存されます。**リポジトリ内には保存されません。**
+（Windows は `%APPDATA%\gcloud\`）に保存されます。リポジトリ内には保存されません。
 
-Google Cloud Console 側で必要なのは **API の有効化だけ**です。
-「認証情報」ページでサービスアカウントを作る必要はありません。
+この方式もサービスアカウント鍵を作らないため、上記の組織ポリシーの影響を受けません。
 
-> **「サービス アカウント キーの作成が無効になっています」と表示された場合**
->
-> 組織ポリシー `constraints/iam.disableServiceAccountKeyCreation` により、
-> 秘密鍵 JSON の発行が禁止されています（近年の Google Cloud では新規組織の既定値）。
-> **ADC はそもそも鍵ファイルを作らない方式なので、この制限には該当しません。**
-> このメッセージは無視して、上記の `gcloud auth application-default login` に進んでください。
+</details>
 
 <details>
-<summary>サービスアカウント鍵を使う場合（代替手段）</summary>
+<summary>サービスアカウント鍵を使う場合（代替手段2）</summary>
 
 複数人で共有する、CI で回すなどの理由でサービスアカウントが必要な場合のみ。
-なお、上記の組織ポリシーが有効な環境では**この方法は使えません**（鍵を発行できないため）。
-その場合は ADC を使うか、組織管理者にポリシーの例外設定を依頼してください。
+組織ポリシー `constraints/iam.disableServiceAccountKeyCreation` が有効な環境では
+**この方法は使えません**（鍵を発行できないため）。
+その場合はブラウザ認証か ADC を使うか、組織管理者にポリシーの例外設定を依頼してください。
 
 1. Google Cloud Console →「APIとサービス」→「認証情報」→「+ 認証情報を作成」→「サービスアカウント」
    ロールは**選択しません**（GCP の IAM ロールは不要。権限は GA4 / Search Console 側で個別に付与します）
@@ -114,7 +170,9 @@ Google Cloud Console 側で必要なのは **API の有効化だけ**です。
 
 ### 1-4. 権限の確認
 
-ADC（ユーザー認証）の場合、ご自身のアカウントの権限がそのまま使われます。必要なのは以下だけです。
+ブラウザ認証・ADC の場合、ご自身のアカウントの権限がそのまま使われます。
+すでに GA4 と Search Console を閲覧できているなら**追加の権限付与は不要**です。
+必要なのは以下だけです。
 
 | サービス | 必要な権限 | 確認場所 |
 |---|---|---|
@@ -129,7 +187,7 @@ ADC（ユーザー認証）の場合、ご自身のアカウントの権限が�
 cp .env.example .env
 ```
 
-`.env` を開いて以下を設定します。
+`.env` を開いて以下を設定します（OAuth の2項目は 1-3 で設定済み）。
 
 | 変数 | 内容 | 取得場所 |
 |---|---|---|
@@ -172,6 +230,7 @@ GA4 は名称が改称されることがあるため（例: `conversions` → `k
 
 | コマンド | 内容 |
 |---|---|
+| `npm run analytics:login` | ブラウザ認証（初回・再認証時のみ） |
 | `npm run analytics:doctor` | 設定・認証・API疎通の確認 |
 | `npm run analytics:schema` | GA4 のディメンション/指標名の有効性を検証 |
 | `npm run analytics:ga4` | GA4 データの取得 |
@@ -362,13 +421,27 @@ GA4 のデータ保持設定は「管理 → データ設定 → データ保持
 
 ## 7. トラブルシューティング
 
+### 「サービス アカウント キーの作成が無効になっています」
+
+組織ポリシー `constraints/iam.disableServiceAccountKeyCreation` によるものです。
+**ブラウザ認証（1-3）はサービスアカウント鍵を作らないため、この制限には該当しません。**
+このメッセージは無視して、OAuth クライアント ID の作成に進んでください。
+
+### `gcloud` をインストールできない
+
+不要です。[1-3 のブラウザ認証](#1-3-認証ブラウザ認証--推奨)を使ってください。
+`npm run analytics:login` だけで認証が完了します。
+
 ### `Could not load the default credentials`
 
-ADC が未設定です。[1-3](#1-3-認証adc--ユーザー認証) の `gcloud auth application-default login` を実行してください。
+認証が未設定です。`npm run analytics:login` を実行してください。
 
 ### `insufficient authentication scopes` / `ACCESS_TOKEN_SCOPE_INSUFFICIENT`
 
-`--scopes` を付けずに ADC を作成しています。作り直してください。
+トークンのスコープが足りていません。
+
+- ブラウザ認証の場合 … `npm run analytics:login` をやり直してください
+- ADC の場合 … `--scopes` を付けずに作成しています。作り直してください
 
 ```bash
 gcloud auth application-default login \
@@ -377,13 +450,33 @@ gcloud auth application-default login \
 
 ### `SERVICE_DISABLED` / `has not been used in project`
 
-API が未有効化か、割り当てプロジェクトが未設定です。
+API が有効化されていません。Google Cloud Console →「APIとサービス」→「ライブラリ」で
+`Google Analytics Data API` と `Google Search Console API` を有効にしてください。
+
+ADC を使っている場合は、割り当てプロジェクトの設定も必要です。
 
 ```bash
 gcloud auth application-default set-quota-project <プロジェクトID>
 ```
 
-に加えて、Google Cloud Console で該当の API が有効になっているか確認してください。
+### `invalid_grant` / 数日で認証が切れる
+
+OAuth 同意画面の User Type が「外部」かつ公開ステータスが「テスト」の場合、
+**リフレッシュトークンは7日で失効します**（Google の仕様）。
+
+- Google Workspace アカウントなら User Type を「内部」に変更すると失効しなくなります
+- 変更できない場合は、切れたときに `npm run analytics:login` を再実行してください
+
+### `リフレッシュトークンを取得できませんでした`
+
+すでに同じアプリを許可済みのため、Google が再発行しなかった状態です。
+[アカウントのアクセス権限](https://myaccount.google.com/permissions) から
+該当アプリのアクセスを削除し、`npm run analytics:login` をやり直してください。
+
+### ブラウザで「このアプリは Google で確認されていません」と出る
+
+ご自身が作成した未検証のアプリのため、正常な表示です。
+「詳細」→「(アプリ名) に移動」で進めてください。
 
 ### `403 権限がありません`
 
@@ -433,6 +526,7 @@ npm run analytics:schema
 
 ```
 scripts/analytics/
+├── login.mjs              ブラウザ認証（OAuth）
 ├── doctor.mjs             疎通確認
 ├── schema-check.mjs       GA4 スキーマ検証
 ├── ga4.mjs                GA4 データ取得

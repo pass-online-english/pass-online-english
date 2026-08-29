@@ -4,6 +4,7 @@
  */
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
@@ -129,6 +130,35 @@ export function assertCredentialsOutsideRepo() {
 export function quotaProjectId() {
   const v = (process.env.GOOGLE_CLOUD_PROJECT ?? '').trim();
   return blank(v) ? null : v;
+}
+
+/**
+ * OAuth（ブラウザ認証）で取得したトークンの保存先。
+ * gcloud を入れられない環境向けの認証方式で使う。リポジトリ外に置く。
+ */
+export function oauthTokenPath() {
+  const explicit = (process.env.GOOGLE_OAUTH_TOKEN_PATH ?? '').trim();
+  if (!blank(explicit)) {
+    return path.resolve(explicit.replace(/^~(?=$|\/)/, os.homedir()));
+  }
+  return path.join(os.homedir(), '.config', 'pass-analytics', 'oauth-token.json');
+}
+
+/** `npm run analytics:login` 実行時に必要な OAuth クライアント情報 */
+export function oauthClientFromEnv() {
+  const clientId = (process.env.GOOGLE_OAUTH_CLIENT_ID ?? '').trim();
+  const clientSecret = (process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '').trim();
+  if (blank(clientId) || blank(clientSecret)) {
+    throw new ConfigError(
+      'GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です。\n' +
+        '  Google Cloud Console →「APIとサービス」→「認証情報」→\n' +
+        '  「+ 認証情報を作成」→「OAuth クライアント ID」→ アプリの種類「デスクトップ アプリ」\n' +
+        '  で作成し、表示されるクライアントIDとクライアントシークレットを .env に設定してください。\n\n' +
+        '  ※ これはサービスアカウント鍵ではないため、\n' +
+        '     「サービス アカウント キーの作成が無効になっています」の制限には該当しません。'
+    );
+  }
+  return { clientId, clientSecret };
 }
 
 export { ConfigError };

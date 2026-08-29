@@ -51,8 +51,16 @@ await main(async () => {
 
   section('2. 認証');
   const src = describeCredentialSource();
-  info(`方式: ${src.kind === 'adc-user' ? 'ADC（ユーザー認証）' : 'サービスアカウント鍵'}`);
+  const kindLabel = {
+    'oauth-user': 'ブラウザ認証（OAuth / gcloud 不要）',
+    'service-account-key': 'サービスアカウント鍵',
+    'adc-user': 'ADC（gcloud のユーザー認証）',
+  }[src.kind];
+  info(`方式: ${kindLabel}`);
   info(`参照先: ${src.detail}`);
+  if (src.kind === 'adc-user') {
+    info('未設定の場合は `npm run analytics:login` でブラウザ認証を使えます（gcloud 不要）。');
+  }
   info(`要求スコープ（読み取り専用のみ）:\n     - ${SCOPES.join('\n     - ')}`);
   try {
     const client = await getAuthClient();

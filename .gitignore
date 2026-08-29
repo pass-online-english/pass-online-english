@@ -12,6 +12,8 @@
 *credentials*.json
 client_secret*.json
 application_default_credentials.json
+*token*.json
+oauth-token.json
 *-key.json
 *.pem
 *.p12

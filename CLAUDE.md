@@ -29,6 +29,7 @@ scripts/analytics/    GA4 / Search Console 分析ツール（読み取り専用�
 | SEO 改善候補だけ | `npm run analytics:insights -- --days 28` |
 | 地域の偏りを調べる | `npm run analytics:ga4 -- --days 28 --geo-cross` |
 | 設定・疎通が怪しいとき | `npm run analytics:doctor` |
+| 認証が切れた／未設定のとき | `npm run analytics:login`（ブラウザ認証・gcloud 不要） |
 | GA4 の指標名エラー | `npm run analytics:schema` |
 
 詳細は `docs/ANALYTICS.md`。
