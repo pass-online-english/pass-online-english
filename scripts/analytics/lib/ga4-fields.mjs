@@ -6,11 +6,17 @@
  *
  * 【GA4 API の制約】
  *  - 1リクエストあたり dimension 最大9・metric 最大10
+ *    （超えた場合は ga4-client.mjs が自動的に複数リクエストへ分割する）
  *  - ディメンションの組み合わせが多いとカーディナリティ上限で (other) 行に丸められる
  * そのため、地域の偏りを見るクロス分析は「city × 1〜2項目」に分割して複数クエリで取得する。
  */
 
 /** サイト全体・時系列で使う中心指標 */
+/**
+ * GA4 は 1リクエストあたり指標10個までのため、ここは10個を超えないこと。
+ * 直帰率（bounceRate）は GA4 の定義上ちょうど 1 − engagementRate なので、
+ * API では取得せず normalize() で算出している（1枠を節約するため）。
+ */
 export const CORE_METRICS = [
   'totalUsers',
   'newUsers',
@@ -20,7 +26,6 @@ export const CORE_METRICS = [
   'screenPageViews',
   'averageSessionDuration',
   'userEngagementDuration',
-  'bounceRate',
   'eventCount',
   'keyEvents',
 ];

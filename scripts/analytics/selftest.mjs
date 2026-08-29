@@ -16,6 +16,8 @@ import { toCSV, delta, fmtPct, mdTable } from './lib/output.mjs';
 import {
   opportunityA, opportunityB, opportunityC, opportunityD, opportunityE, expectedCtr, extractOpportunities,
 } from './lib/opportunities.mjs';
+import { mergeChunkedReports, withDerivedMetrics, MAX_METRICS_PER_REQUEST } from './lib/ga4-client.mjs';
+import { GA4_REPORTS, GA4_GEO_CROSS_REPORTS, CORE_METRICS } from './lib/ga4-fields.mjs';
 import { buildReport } from './report.mjs';
 import { summarizeKeyEvents, summaryMarkdown, detailMarkdown, geoCrossMarkdown } from './ga4.mjs';
 import { buildMarkdown as gscMarkdown } from './search-console.mjs';
@@ -303,6 +305,66 @@ test('ゼロ除算が発生しない', () => {
   const f = funnelTotals([]);
   assert.equal(f.ctr, null);
   assert.equal(fmtPct(null), '');
+});
+
+console.log('\n── GA4 API の制約 ────────────────────────────');
+
+test('すべてのレポートが指標10個・ディメンション9個の上限内に収まる', () => {
+  for (const r of [...GA4_REPORTS, ...GA4_GEO_CROSS_REPORTS]) {
+    assert.ok(
+      r.metrics.length <= MAX_METRICS_PER_REQUEST,
+      `${r.key}: 指標が${r.metrics.length}個で上限${MAX_METRICS_PER_REQUEST}個を超えています`
+    );
+    assert.ok(r.dimensions.length <= 9, `${r.key}: ディメンションが${r.dimensions.length}個で上限9個を超えています`);
+  }
+});
+
+test('直帰率は engagementRate から算出される（API 枠を使わない）', () => {
+  assert.ok(!CORE_METRICS.includes('bounceRate'), 'bounceRate は API から取得しない');
+  assert.equal(withDerivedMetrics({ engagementRate: 0.62 }).bounceRate, 0.38);
+  assert.equal(withDerivedMetrics({ engagementRate: 1 }).bounceRate, 0);
+  // すでに値がある場合は上書きしない
+  assert.equal(withDerivedMetrics({ engagementRate: 0.6, bounceRate: 0.9 }).bounceRate, 0.9);
+  // engagementRate が無ければ何もしない
+  assert.equal(withDerivedMetrics({ sessions: 3 }).bounceRate, undefined);
+});
+
+test('指標が上限を超えたら分割し、結果を突き合わせて1つに戻せる', () => {
+  const partA = {
+    dimensions: ['date'], metrics: ['sessions', 'totalUsers'],
+    rows: [{ date: '20260801', sessions: 10, totalUsers: 9 }, { date: '20260802', sessions: 20, totalUsers: 18 }],
+    totals: { sessions: 30 }, rowCount: 2, sampled: false, hasOtherRow: false,
+  };
+  const partB = {
+    dimensions: ['date'], metrics: ['keyEvents'],
+    rows: [{ date: '20260801', keyEvents: 1 }, { date: '20260802', keyEvents: 4 }],
+    totals: { keyEvents: 5 }, rowCount: 2, sampled: true, hasOtherRow: false,
+  };
+  const merged = mergeChunkedReports([partA, partB], {
+    metrics: ['sessions', 'totalUsers', 'keyEvents'],
+    orderBys: [{ dimension: { dimensionName: 'date' }, desc: false }],
+  });
+
+  assert.equal(merged.rows.length, 2);
+  assert.deepEqual(merged.rows[0], { date: '20260801', sessions: 10, totalUsers: 9, keyEvents: 1 });
+  assert.deepEqual(merged.rows[1], { date: '20260802', sessions: 20, totalUsers: 18, keyEvents: 4 });
+  assert.deepEqual(merged.totals, { sessions: 30, keyEvents: 5 });
+  assert.equal(merged.sampled, true, 'どれか1つでもサンプリングされていれば true');
+  assert.equal(merged.splitIntoRequests, 2);
+});
+
+test('分割時に片方にしか無い行があっても欠損させず0で埋める', () => {
+  const merged = mergeChunkedReports(
+    [
+      { dimensions: ['city'], metrics: ['sessions'], rows: [{ city: 'Osaka', sessions: 5 }], totals: {}, rowCount: 1, sampled: false, hasOtherRow: false },
+      { dimensions: ['city'], metrics: ['keyEvents'], rows: [{ city: 'Tokyo', keyEvents: 2 }], totals: {}, rowCount: 1, sampled: false, hasOtherRow: false },
+    ],
+    { metrics: ['sessions', 'keyEvents'] }
+  );
+  const osaka = merged.rows.find((r) => r.city === 'Osaka');
+  const tokyo = merged.rows.find((r) => r.city === 'Tokyo');
+  assert.equal(osaka.keyEvents, 0);
+  assert.equal(tokyo.sessions, 0);
 });
 
 console.log('\n── レポート生成（合成データ） ────────────────');
