@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "analytics:setup": "node scripts/analytics/setup.mjs",
     "analytics:login": "node scripts/analytics/login.mjs",
     "analytics:doctor": "node scripts/analytics/doctor.mjs",
     "analytics:schema": "node scripts/analytics/schema-check.mjs",

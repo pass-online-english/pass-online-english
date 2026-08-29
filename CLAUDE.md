@@ -30,6 +30,7 @@ scripts/analytics/    GA4 / Search Console 分析ツール（読み取り専用�
 | 地域の偏りを調べる | `npm run analytics:ga4 -- --days 28 --geo-cross` |
 | 設定・疎通が怪しいとき | `npm run analytics:doctor` |
 | 認証が切れた／未設定のとき | `npm run analytics:login`（ブラウザ認証・gcloud 不要） |
+| `.env` が未設定のとき | `npm run analytics:setup`（対話形式。利用者自身に実行してもらう） |
 | GA4 の指標名エラー | `npm run analytics:schema` |
 
 詳細は `docs/ANALYTICS.md`。

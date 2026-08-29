@@ -20,6 +20,7 @@ GA4 と Google Search Console のデータを取得・分析するツールを�
 
 ```bash
 npm install
+npm run analytics:setup               # .env を対話形式で作成（初回のみ）
 npm run analytics:login               # ブラウザ認証（初回のみ / gcloud 不要）
 npm run analytics:doctor              # 設定と疎通の確認
 npm run analytics:report -- --days 28 # 統合レポートの生成
@@ -29,6 +30,7 @@ npm run analytics:report -- --days 28 # 統合レポートの生成
 
 | コマンド | 内容 |
 |---|---|
+| `npm run analytics:setup` | `.env` を対話形式で作成・更新 |
 | `npm run analytics:login` | ブラウザ認証（初回・再認証時のみ） |
 | `npm run analytics:doctor` | 設定・認証・API疎通の確認 |
 | `npm run analytics:schema` | GA4 のディメンション/指標名の有効性を検証 |

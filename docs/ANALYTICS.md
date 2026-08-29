@@ -85,18 +85,37 @@ Google Cloud Console →「APIとサービス」→「OAuth 同意画面」
 > 組織ポリシー `constraints/iam.disableServiceAccountKeyCreation` は
 > サービスアカウントの秘密鍵 JSON のみを禁止するもので、OAuth クライアントは作成できます。
 
-#### ③ `.env` に設定してログイン
+#### ③ 設定してログイン
+
+```bash
+npm run analytics:setup
+```
+
+質問に答えるだけで `.env` が作られます（テキストエディタは不要）。
+②のクライアントID・シークレットに加えて、GA4 プロパティIDと
+Search Console のプロパティもここで設定します。
+
+入力値はその場で形式を検証するため、測定ID（`G-`）とプロパティIDの取り違えや、
+Search Console の末尾スラッシュ漏れはその場で指摘されます。
+2回目以降は Enter を押すだけで現在の値を引き継げます。
+
+<details>
+<summary>手でファイルを編集する場合</summary>
+
+`.env` は先頭がドットの隠しファイルのため、Finder / エクスプローラーでは通常表示されません。
+ターミナルから開いてください。
 
 ```bash
 cp .env.example .env
+
+open -e .env     # Mac（テキストエディット）
+notepad .env     # Windows（メモ帳）
+code .env        # VS Code
 ```
 
-`.env` に②の2つの値を貼り付けます。
+Mac の Finder で隠しファイルを表示するには `Cmd` + `Shift` + `.` を押します。
 
-```
-GOOGLE_OAUTH_CLIENT_ID=xxxxx.apps.googleusercontent.com
-GOOGLE_OAUTH_CLIENT_SECRET=xxxxx
-```
+</details>
 
 ```bash
 npm run analytics:login
@@ -183,11 +202,8 @@ gcloud auth application-default set-quota-project <あなたのプロジェク�
 
 ### 1-5. 環境変数
 
-```bash
-cp .env.example .env
-```
-
-`.env` を開いて以下を設定します（OAuth の2項目は 1-3 で設定済み）。
+`npm run analytics:setup` を実行済みであれば、この節はすでに完了しています。
+手で設定する場合は `cp .env.example .env` のうえ、以下を記入してください。
 
 | 変数 | 内容 | 取得場所 |
 |---|---|---|
@@ -230,6 +246,7 @@ GA4 は名称が改称されることがあるため（例: `conversions` → `k
 
 | コマンド | 内容 |
 |---|---|
+| `npm run analytics:setup` | `.env` を対話形式で作成・更新 |
 | `npm run analytics:login` | ブラウザ認証（初回・再認証時のみ） |
 | `npm run analytics:doctor` | 設定・認証・API疎通の確認 |
 | `npm run analytics:schema` | GA4 のディメンション/指標名の有効性を検証 |
@@ -526,6 +543,7 @@ npm run analytics:schema
 
 ```
 scripts/analytics/
+├── setup.mjs              .env の対話生成
 ├── login.mjs              ブラウザ認証（OAuth）
 ├── doctor.mjs             疎通確認
 ├── schema-check.mjs       GA4 スキーマ検証
