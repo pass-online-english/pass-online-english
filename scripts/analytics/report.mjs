@@ -307,6 +307,40 @@ export function buildReport({ range, comparison, ga4, gsc, keyEventInfo, combine
     md += `\n_GA4 側の設定変更は本ツールでは行いません。_\n\n`;
   }
 
+  // 問い合わせ導線が外部サイトの場合、計測できる最後の地点が離脱クリックになる
+  const outbound = ga4['outbound-clicks'];
+  if (outbound) {
+    md += `### 外部リンククリック（問い合わせ導線の代替指標）\n\n`;
+    if (!outbound.current.rows.length) {
+      md += '_離脱クリックが記録されていません。GA4 の拡張計測機能で「離脱クリック」が無効の可能性があります。_\n\n';
+    } else {
+      md += `申込フォームや LINE など外部サイトへの遷移は、送信完了を GA4 で計測できません。\n`;
+      md += `計測できる最後の地点である「離脱クリック」を、遷移先ドメインと発生ページ別に集計しています。\n\n`;
+      const byDomain = new Map();
+      for (const r of outbound.current.rows) {
+        const d = r.linkDomain || '(不明)';
+        const acc = byDomain.get(d) ?? { linkDomain: d, eventCount: 0, totalUsers: 0 };
+        acc.eventCount += r.eventCount ?? 0;
+        acc.totalUsers += r.totalUsers ?? 0;
+        byDomain.set(d, acc);
+      }
+      md += mdTable([...byDomain.values()].sort((a, b) => b.eventCount - a.eventCount), [
+        { key: 'linkDomain', label: '遷移先ドメイン' },
+        { key: 'eventCount', label: 'クリック数', align: 'right', format: fmtNum },
+        { key: 'totalUsers', label: 'ユーザー数（延べ）', align: 'right', format: fmtNum },
+      ]);
+      md += `\n**発生ページ別**\n\n`;
+      md += mdTable(outbound.current.rows.slice(0, 25), [
+        { key: 'pagePath', label: '発生ページ', format: (v) => truncate(v, 34) },
+        { key: 'linkDomain', label: '遷移先', format: (v) => truncate(v, 26) },
+        { key: 'linkUrl', label: 'リンク先URL', format: (v) => truncate(v, 40) },
+        { key: 'eventCount', label: 'クリック', align: 'right', format: fmtNum },
+        { key: 'totalUsers', label: 'ユーザー', align: 'right', format: fmtNum },
+      ]);
+      md += `\n_この数値は「ボタンを押した」までであり、フォーム送信や友だち追加の完了ではありません。_\n\n`;
+    }
+  }
+
   // ── 7. 統合分析 ─────────────────────────────
   md += `---\n\n## 7. Search Console × GA4 統合分析（ページ単位）\n\n`;
   md += `Search Console（検索での表示・クリック）と GA4（到達後の行動）を、ページURLをキーに集計値として並べたものです。`;

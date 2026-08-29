@@ -157,6 +157,23 @@ export const GA4_REPORTS = [
     limit: 300,
   },
   {
+    key: 'outbound-clicks',
+    label: '外部リンククリック（問い合わせ導線の代替指標）',
+    group: 'conversion',
+    /**
+     * 問い合わせ導線が外部サイト（Googleフォーム / LINE）への遷移である場合、
+     * 送信完了は GA4 では計測できない。計測できる最後の地点が
+     * 拡張計測機能の「離脱クリック」= click イベントなので、
+     * どのページからどの外部ドメインへ遷移したかを取得する。
+     */
+    dimensions: ['linkDomain', 'linkUrl', 'pagePath'],
+    metrics: ['eventCount', 'totalUsers', 'sessions'],
+    dimensionFilter: {
+      filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'click' } },
+    },
+    limit: 300,
+  },
+  {
     key: 'key-event-landing-pages',
     label: 'キーイベントが発生したランディングページ',
     group: 'conversion',
