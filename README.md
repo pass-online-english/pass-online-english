@@ -1,22 +1,41 @@
 # Passオンライン英語
 
-英検対策を主軸としたオンライン英語レッスンのWebサイト。
+英検対策を主軸としたオンライン英語レッスン `https://pass-online-english.com` のリポジトリ。
 
-## サイト構成
+素の HTML / CSS による静的サイトで、ビルド処理はありません。
+公開は **Cloudflare Pages への手動アップロード**です。
+
+## 構成
 
 ```
-index.html            トップページ（LP）
-style.css             全体のスタイル
-blog/
-  toeic990.html       ブログ記事: 新形式TOEIC990点の勉強法
+site/                 本番にアップロードするファイル一式（サイトの実体）
+scripts/analytics/    GA4 / Search Console 分析ツール（読み取り専用）
+docs/
+  DEPLOY.md           サイトの管理とデプロイ手順
+  ANALYTICS.md        分析ツールのセットアップと使い方
+reports/              分析結果の出力先（Git 管理外）
 ```
 
-素のHTML / CSS で構成された静的サイトです。ビルド処理はありません。
+`package.json` は分析ツール専用です。公開されるサイトの動作には関与しません。
+
+## サイトを更新する
+
+```bash
+git pull
+# site/ の中の HTML を編集
+git add site/ && git commit -m "..." && git push
+# Cloudflare Pages に site/ の中身をアップロード
+```
+
+**Git に記録してからアップロード**してください。詳細と注意点は **[docs/DEPLOY.md](docs/DEPLOY.md)**。
+
+> ファイル名は変更しないでください。Cloudflare Pages がファイル名から公開URLを
+> 生成しているため、リネームするとURLが変わり検索評価がリセットされます。
 
 ## アクセス解析・SEO分析
 
-GA4 と Google Search Console のデータを取得・分析するツールを同梱しています。
-**読み取り専用**で、サイト本体の動作には影響しません。
+GA4 と Google Search Console のデータを取得・分析します。**読み取り専用**で、
+サイト本体には影響しません。
 
 ```bash
 npm install
@@ -26,7 +45,7 @@ npm run analytics:doctor              # 設定と疎通の確認
 npm run analytics:report -- --days 28 # 統合レポートの生成
 ```
 
-セットアップ手順・コマンド一覧・データ上の制約は **[docs/ANALYTICS.md](docs/ANALYTICS.md)** を参照してください。
+セットアップ手順・データ上の制約は **[docs/ANALYTICS.md](docs/ANALYTICS.md)** を参照してください。
 
 | コマンド | 内容 |
 |---|---|
@@ -45,17 +64,5 @@ npm run analytics:report -- --days 28 # 統合レポートの生成
 - 認証情報は**リポジトリ外**に保存します（`~/.config/pass-analytics/`、パーミッション600）
 - サービスアカウントの秘密鍵は作りません（組織ポリシーで鍵作成が禁止されていても利用可能）
 - `.env` および credential ファイルは `.gitignore` で除外済みです
-- 分析結果の出力先 `reports/` も Git 管理外です
+- 分析結果の出力先 `reports/` も Git 管理外です（実データを含むため）
 - API のスコープは読み取り専用のみを要求しています
-
-## 計測タグの設置状況
-
-| ページ | GA4 タグ（`G-MYKHP4K4QN`） |
-|---|---|
-| `blog/toeic990.html` | 設置済み |
-| `index.html` | **未設置** |
-
-トップページには gtag.js が入っていないため、このリポジトリの内容がそのまま
-公開されている場合、GA4 に届いているのはブログ記事へのアクセスのみになります。
-`npm run analytics:report` の「突き合わせのカバレッジ」で、
-Search Console にあって GA4 にないページを確認できます。
