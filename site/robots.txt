@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# 検索エンジンのクロール対象外
+Disallow: /assets/
+Disallow: /admin/
+Disallow: /*.json$
+
+Sitemap: https://pass-online-english.com/sitemap.xml

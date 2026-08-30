@@ -1,0 +1,8 @@
+# Cloudflare Pages / Netlify 用のリダイレクト設定
+# 書式: <元のパス> <転送先> <ステータス>
+
+# 2026-08 に削除した「英検オンライン塾の選び方」。
+# 公開済みで被リンク・検索流入が残っている可能性があるため、
+# 404 にせずトップへ恒久転送する。
+/eiken-online-juku-erabikata.html  /  301
+/eiken-online-juku-erabikata       /  301
