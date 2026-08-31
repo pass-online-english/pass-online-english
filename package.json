@@ -1,0 +1,25 @@
+{
+  "name": "pass-online-english-analytics",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Passオンライン英語 — GA4 / Google Search Console 分析ツール（読み取り専用）。静的サイト本体の動作には影響しません。",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "analytics:setup": "node scripts/analytics/setup.mjs",
+    "analytics:login": "node scripts/analytics/login.mjs",
+    "analytics:doctor": "node scripts/analytics/doctor.mjs",
+    "analytics:schema": "node scripts/analytics/schema-check.mjs",
+    "analytics:ga4": "node scripts/analytics/ga4.mjs",
+    "analytics:gsc": "node scripts/analytics/search-console.mjs",
+    "analytics:insights": "node scripts/analytics/insights.mjs",
+    "analytics:report": "node scripts/analytics/report.mjs",
+    "analytics:selftest": "node scripts/analytics/selftest.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "googleapis": "^176.0.0"
+  }
+}
