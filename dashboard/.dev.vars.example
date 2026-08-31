@@ -1,0 +1,12 @@
+# ローカル開発用のシークレット。`.dev.vars` にコピーして使う（.dev.vars は絶対にコミットしない）
+DASHBOARD_TOKEN=localdev
+DEMO_MODE=1
+
+# 本番同様に Google 連携を試す場合のみ設定
+# GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
+# GOOGLE_CLIENT_SECRET=xxxxx
+# GOOGLE_REFRESH_TOKEN=1//xxxxx
+
+# Cloudflare Access を併用する場合のみ設定
+# ACCESS_TEAM_DOMAIN=yourteam.cloudflareaccess.com
+# ACCESS_AUD=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

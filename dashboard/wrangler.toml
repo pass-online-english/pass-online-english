@@ -1,0 +1,47 @@
+# Cloudflare Workers 設定
+# 1) KV 名前空間を作成:  npx wrangler kv namespace create DASHBOARD_CACHE
+#    出力された id を下の kv_namespaces に貼り付ける
+# 2) シークレット登録:   npx wrangler secret put GOOGLE_CLIENT_ID  ... など(README参照)
+# 3) デプロイ:           npx wrangler deploy
+
+name = "home-dashboard"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# 静的アセット。run_worker_first=true にすることで、アセットにも必ず認証が掛かる。
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[observability]
+enabled = true
+
+# --- 秘密でない設定値(要件26)。CONFIG_JSON で全項目を上書きできる ---
+[vars]
+TIMEZONE = "Asia/Tokyo"
+LATITUDE = "35.681236"
+LONGITUDE = "139.767125"
+LOCATION_NAME = "東京"
+DAYS_TO_DISPLAY = "7"
+MAX_EVENTS_PER_DAY = "4"
+MAX_TASKS = "6"
+TONIGHT_START_TIME = "17:00"
+TOMORROW_EMPHASIS_TIME = "20:00"
+CALENDAR_REFRESH_INTERVAL = "300000"
+TASK_REFRESH_INTERVAL = "300000"
+WEATHER_REFRESH_INTERVAL = "1800000"
+AUTHORIZED_USERS = ""
+DEMO_MODE = "0"
+# カレンダー定義・重要カレンダー・天気の閾値などはここへ JSON で（README 参照）
+# CONFIG_JSON = '{"calendars":[...]}'
+
+[[kv_namespaces]]
+binding = "DASHBOARD_CACHE"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# --- 独自ドメインを使う場合 ---
+# [[routes]]
+# pattern = "dashboard.example.com"
+# custom_domain = true

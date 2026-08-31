@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="robots" content="noindex, nofollow">
+<title>Home Dashboard</title>
+<link rel="stylesheet" href="/style.css?v=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%A0%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="topbar">
+    <div class="clock-block">
+      <div class="clock" id="clock">--:--</div>
+      <div class="clock-meta">
+        <div class="date" id="date">読み込み中</div>
+        <div class="weekday" id="weekday"></div>
+      </div>
+    </div>
+
+    <div class="weather-now" id="weather-now">
+      <div class="wn-icon" id="wn-icon">·</div>
+      <div class="wn-main">
+        <div class="wn-temp" id="wn-temp">--°</div>
+        <div class="wn-sub" id="wn-sub">天気を取得中</div>
+      </div>
+      <div class="wn-range" id="wn-range"></div>
+    </div>
+
+    <div class="status" id="status"></div>
+  </header>
+
+  <main class="grid" id="grid">
+    <section class="card card-next" id="card-next">
+      <h2 class="card-title">NEXT</h2>
+      <div class="card-body" id="next-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-today" id="card-today">
+      <h2 class="card-title">TODAY</h2>
+      <div class="card-body" id="today-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-tonight" id="card-tonight">
+      <h2 class="card-title">TONIGHT</h2>
+      <div class="card-body" id="tonight-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-week" id="card-week">
+      <h2 class="card-title">7 DAYS</h2>
+      <div class="card-body" id="week-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-tasks" id="card-tasks">
+      <h2 class="card-title">TASKS</h2>
+      <div class="card-body" id="tasks-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-tomorrow" id="card-tomorrow">
+      <h2 class="card-title">TOMORROW</h2>
+      <div class="card-body" id="tomorrow-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-coming" id="card-coming">
+      <h2 class="card-title" id="coming-title">COMING UP</h2>
+      <div class="card-body" id="coming-body"><div class="placeholder">読み込み中…</div></div>
+    </section>
+
+    <section class="card card-free" id="card-free">
+      <h2 class="card-title" id="free-title">FREE TOGETHER</h2>
+      <div class="card-body" id="free-body"></div>
+    </section>
+  </main>
+
+</div>
+<script src="/app.js?v=1"></script>
+</body>
+</html>
