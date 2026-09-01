@@ -12,6 +12,8 @@ import { resolveRange, comparisonRange, formatRange } from './lib/dates.mjs';
 import { gscLagDays } from './lib/env.mjs';
 import { querySearchAnalytics } from './lib/gsc-client.mjs';
 import { extractOpportunities } from './lib/opportunities.mjs';
+import { rankTransitions } from './lib/rank-bands.mjs';
+import { rankBandsMarkdown } from './lib/rank-bands-md.mjs';
 import {
   createRunDir, writeJSON, writeCSV, writeText, mdTable, fmtNum, fmtPct,
   fmtDelta, truncate, relativeToCwd,
@@ -38,7 +40,7 @@ export async function buildOpportunities({ range, comparison, opts = {} }) {
     pagePrevious = await querySearchAnalytics({ ...comparison, dimensions: ['page'], maxRows: 5000 });
   }
 
-  return extractOpportunities(
+  const opportunities = extractOpportunities(
     {
       queryCurrent: queryCurrent.rows,
       queryPrevious: queryPrevious?.rows ?? null,
@@ -48,6 +50,12 @@ export async function buildOpportunities({ range, comparison, opts = {} }) {
     },
     opts
   );
+
+  return {
+    ...opportunities,
+    rankBands: rankTransitions(queryCurrent.rows, queryPrevious?.rows ?? [], 'query'),
+    rankBandsByPage: rankTransitions(pageCurrent.rows, pagePrevious?.rows ?? [], 'page'),
+  };
 }
 
 const CTR_COLS = [
@@ -63,6 +71,9 @@ export function opportunitiesMarkdown(opp, range, comparison) {
   if (comparison) md += `- 比較期間: ${formatRange(comparison)}（${comparison.label}）\n`;
   md += `- しきい値: 最小表示回数 ${opp.thresholds.minImpressions} / 順位帯 ${opp.thresholds.positionLow}〜${opp.thresholds.positionHigh}位\n\n`;
   md += `> ${opp.disclaimer}\n\n`;
+
+  md += `## 0. 順位帯の分布と移動（SEO の進み具合）\n\n`;
+  md += rankBandsMarkdown(opp.rankBands, { dimLabel: '検索クエリ', comparison: Boolean(comparison) });
 
   md += `## A. 順位4〜15位＋表示回数が多い（伸びしろが大きい候補）\n\n`;
   md += `あと少し順位が上がればクリックが増える可能性のあるクエリ。推定クリック増は「3位分順位が上がった場合」の粗い目安であり、保証値ではありません。\n\n`;
@@ -187,6 +198,11 @@ await main(async () => {
   };
   for (const [k, v] of Object.entries(counts)) log(`  候補 ${k.padEnd(9)} ${v}件`);
 
+  const rb = opp.rankBands.summary;
+  log('');
+  log(`  1ページ目（10位以内）のクエリ数: ${rb.topTenQueries}件（前期間 ${rb.topTenQueries_prev}件 / ${rb.topTenQueriesDelta >= 0 ? '+' : ''}${rb.topTenQueriesDelta}）`);
+  log(`  順位帯の移動: 改善 ${rb.improvedCount} / 悪化 ${rb.declinedCount} / 横ばい ${rb.unchangedCount} / 新規 ${rb.enteredCount} / 消失 ${rb.exitedCount}`);
+
   const dir = createRunDir('insights', { out: args.out });
   if (formats.includes('json')) {
     writeJSON(dir, 'opportunities', { generatedAt: new Date().toISOString(), range, comparison, ...opp });
@@ -198,6 +214,11 @@ await main(async () => {
     writeCSV(dir, 'C-growing-queries', opp.C_growingQueries);
     writeCSV(dir, 'D-declining-queries', opp.D_decliningQueries);
     writeCSV(dir, 'D-declining-pages', opp.D_decliningPages);
+    writeCSV(dir, 'rank-bands', opp.rankBands.currentDistribution.bands);
+    writeCSV(dir, 'rank-improved', opp.rankBands.improved);
+    writeCSV(dir, 'rank-declined', opp.rankBands.declined);
+    writeCSV(dir, 'rank-entered', opp.rankBands.entered);
+    writeCSV(dir, 'rank-exited', opp.rankBands.exited);
     writeCSV(
       dir,
       'E-cannibalization',
