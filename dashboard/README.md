@@ -58,14 +58,14 @@ cp .dev.vars.example .dev.vars
 2. 「API とサービス」→ **Google Calendar API** と **Google Tasks API** を有効化
 3. OAuth 同意画面: 外部 / テストユーザーに自分（と妻）のアドレスを追加
 4. 認証情報 → OAuth クライアント ID → **デスクトップアプリ**を作成
-5. `.dev.vars` に `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を書く
-6. リフレッシュトークンを取得し、`.dev.vars` の `GOOGLE_REFRESH_TOKEN` に貼る
+5. `.dev.vars` に `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を書く（`open -e .dev.vars` で開けます）
+6. リフレッシュトークンを取得する（最後に「.dev.vars に保存しますか？」と聞かれるので Enter でOK）
 
 ```bash
 node scripts/get-refresh-token.mjs      # = npm run token
 ```
 
-7. カレンダー ID / タスクリスト ID を一覧表示する（`CONFIG_JSON` の雛形も出ます）
+7. カレンダー ID / タスクリスト ID を一覧表示する（`CONFIG_JSON` の雛形も出て、そのまま `.dev.vars` に保存できます）
 
 ```bash
 node scripts/list-google-ids.mjs        # = npm run ids

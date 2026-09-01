@@ -8,7 +8,9 @@
  * .dev.vars に GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN が
  * 入っていれば、そのまま実行できる。
  */
-import { resolveEnv } from './env.mjs';
+import { createInterface } from 'node:readline/promises';
+import { stdin, stdout } from 'node:process';
+import { resolveEnv, upsertDevVars } from './env.mjs';
 
 const env = resolveEnv();
 const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN'].filter((k) => !env[k]);
@@ -82,11 +84,22 @@ async function main() {
     taskLists: (lists.items || []).map((l, i) => ({ id: l.id, name: l.title, enabled: i === 0 })),
   };
 
+  const oneLine = JSON.stringify(config);
   console.log('\n=== CONFIG_JSON の雛形（1行）===');
-  console.log('※ displayName / color / person / enabled を編集してから使ってください');
   console.log('※ person は色分けと TONIGHT のグループ分けに使います（me / wife / shared など）\n');
-  console.log(JSON.stringify(config));
-  console.log('');
+  console.log(oneLine);
+
+  const rl = createInterface({ input: stdin, output: stdout });
+  const answer = (await rl.question('\nこの雛形を .dev.vars に保存しますか？（あとで編集できます）[Y/n]: ')).trim().toLowerCase();
+  rl.close();
+  if (answer === '' || answer === 'y' || answer === 'yes') {
+    const file = upsertDevVars({ CONFIG_JSON: oneLine });
+    console.log('\n保存しました: ' + file);
+    console.log('編集するとき:  open -e .dev.vars');
+    console.log('起動するとき:  node scripts/serve-local.mjs\n');
+  } else {
+    console.log('');
+  }
 }
 
 main().catch((e) => {

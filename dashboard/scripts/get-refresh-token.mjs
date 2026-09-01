@@ -12,7 +12,7 @@
 import http from 'node:http';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { resolveEnv } from './env.mjs';
+import { resolveEnv, upsertDevVars } from './env.mjs';
 
 const PORT = Number(process.env.PORT || 8976);
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
@@ -79,9 +79,24 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('\n===== refresh_token（この値を Cloudflare の Secret に登録） =====\n');
-  console.log(json.refresh_token);
-  console.log('\n登録コマンド:  npx wrangler secret put GOOGLE_REFRESH_TOKEN\n');
+  const rl2 = createInterface({ input: stdin, output: stdout });
+  const answer = (await rl2.question('\n取得できました。.dev.vars に保存しますか？ [Y/n]: ')).trim().toLowerCase();
+  rl2.close();
+
+  if (answer === '' || answer === 'y' || answer === 'yes') {
+    const file = upsertDevVars({
+      GOOGLE_CLIENT_ID: clientId,
+      GOOGLE_CLIENT_SECRET: clientSecret,
+      GOOGLE_REFRESH_TOKEN: json.refresh_token,
+    });
+    console.log('\n保存しました: ' + file);
+    console.log('次は:  node scripts/list-google-ids.mjs\n');
+  } else {
+    console.log('\n===== refresh_token（手で控える場合はこの値）=====\n');
+    console.log(json.refresh_token);
+    console.log('');
+  }
+  console.log('本番へ登録するとき:  npx wrangler secret put GOOGLE_REFRESH_TOKEN\n');
 }
 
 main().catch((e) => { console.error(e.message); process.exit(1); });
