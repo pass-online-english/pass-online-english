@@ -10,6 +10,7 @@
  * 取得したトークンはこのマシンのファイルには保存しない（標準出力に一度だけ表示）。
  */
 import http from 'node:http';
+import { exec } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { resolveEnv, upsertDevVars } from './env.mjs';
@@ -43,8 +44,20 @@ async function main() {
     include_granted_scopes: 'true',
   }).toString();
 
-  console.log('\n次の URL をブラウザで開いて承認してください:\n');
-  console.log(authUrl + '\n');
+  console.log('\n' + '='.repeat(72));
+  console.log('ブラウザで Google の承認画面を開きます。');
+  console.log('開かないときは、次の URL をコピーしてブラウザに貼ってください:\n');
+  console.log(authUrl);
+  console.log('\n※ 承認が終わるまでこのまま待機します（5分でタイムアウト）。');
+  console.log('※ 待っている間にコマンドを打っても実行されません。中断するときは Control + C。');
+  console.log('='.repeat(72) + '\n');
+
+  // macOS ならブラウザを自動で開く（失敗しても手動で開けるので無視する）
+  if (process.platform === 'darwin') {
+    exec('open ' + JSON.stringify(authUrl), () => {});
+  } else if (process.platform === 'win32') {
+    exec('start "" ' + JSON.stringify(authUrl), () => {});
+  }
 
   const code = await new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -58,8 +71,11 @@ async function main() {
       server.close();
       err ? reject(new Error(err)) : resolve(url.searchParams.get('code'));
     });
-    server.listen(PORT, () => console.log(`ローカルサーバー起動: ${REDIRECT_URI}`));
-    setTimeout(() => { server.close(); reject(new Error('タイムアウト(5分)')); }, 5 * 60 * 1000);
+    server.listen(PORT, () => console.log('承認を待っています... (' + REDIRECT_URI + ')'));
+    setTimeout(() => {
+      server.close();
+      reject(new Error('タイムアウト(5分)。もう一度実行し、表示された URL をブラウザで開いてください。'));
+    }, 5 * 60 * 1000);
   });
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
