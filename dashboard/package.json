@@ -10,7 +10,9 @@
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "test": "node --test test/",
-    "token": "node scripts/get-refresh-token.mjs"
+    "token": "node scripts/get-refresh-token.mjs",
+    "ids": "node scripts/list-google-ids.mjs",
+    "start": "node scripts/serve-local.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

@@ -12,6 +12,7 @@
 import http from 'node:http';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import { resolveEnv } from './env.mjs';
 
 const PORT = Number(process.env.PORT || 8976);
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
@@ -21,9 +22,10 @@ const SCOPES = [
 ];
 
 async function main() {
+  const env = resolveEnv();   // .dev.vars に書いてあればそれを使う
   const rl = createInterface({ input: stdin, output: stdout });
-  const clientId = process.env.GOOGLE_CLIENT_ID || (await rl.question('GOOGLE_CLIENT_ID: ')).trim();
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || (await rl.question('GOOGLE_CLIENT_SECRET: ')).trim();
+  const clientId = env.GOOGLE_CLIENT_ID || (await rl.question('GOOGLE_CLIENT_ID: ')).trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET || (await rl.question('GOOGLE_CLIENT_SECRET: ')).trim();
   rl.close();
 
   if (!clientId || !clientSecret) {

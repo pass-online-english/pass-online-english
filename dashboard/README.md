@@ -45,11 +45,11 @@ cd dashboard
 node scripts/serve-local.mjs        # → http://localhost:8787/?token=localdev
 ```
 
-`wrangler` を使う場合:
+`.dev.vars`（git に入りません）に設定を書くと、それを読んで起動します。
+Google の3つの値が揃った時点で、自動的にダミーデータから実データへ切り替わります。
 
 ```bash
-npm install
-npm run dev:demo
+cp .dev.vars.example .dev.vars
 ```
 
 ### 2. Google 側の設定
@@ -58,15 +58,27 @@ npm run dev:demo
 2. 「API とサービス」→ **Google Calendar API** と **Google Tasks API** を有効化
 3. OAuth 同意画面: 外部 / テストユーザーに自分（と妻）のアドレスを追加
 4. 認証情報 → OAuth クライアント ID → **デスクトップアプリ**を作成
-5. リフレッシュトークンを取得（値はターミナルに1回表示されるだけで保存されません）
+5. `.dev.vars` に `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` を書く
+6. リフレッシュトークンを取得し、`.dev.vars` の `GOOGLE_REFRESH_TOKEN` に貼る
 
 ```bash
-GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=yyy node scripts/get-refresh-token.mjs
+node scripts/get-refresh-token.mjs      # = npm run token
 ```
 
-6. カレンダー ID を控える
-   Google カレンダー → 各カレンダーの設定 → 「カレンダーの統合」→ カレンダー ID
-   （妻のカレンダーは、妻のアカウント側から自分へ「予定の表示（すべての予定の詳細）」で共有）
+7. カレンダー ID / タスクリスト ID を一覧表示する（`CONFIG_JSON` の雛形も出ます）
+
+```bash
+node scripts/list-google-ids.mjs        # = npm run ids
+```
+
+   妻のカレンダーを含めるには、妻のアカウント側から自分へ
+   「予定の表示（すべての予定の詳細）」で共有してもらってください。共有後は上記の一覧に現れます。
+
+8. 実データで起動して確認
+
+```bash
+node scripts/serve-local.mjs            # [Google 実データ] と表示されれば連携成功
+```
 
 ### 3. Cloudflare 側の設定
 
@@ -82,12 +94,15 @@ npx wrangler secret put GOOGLE_CLIENT_ID
 npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put GOOGLE_REFRESH_TOKEN
 npx wrangler secret put DASHBOARD_TOKEN        # openssl rand -hex 32 の出力を貼る
+npx wrangler secret put CONFIG_JSON            # カレンダー定義（下記）。ID はメールアドレスなので Secret 推奨
 
 # デプロイ
 npx wrangler deploy
 ```
 
-`wrangler.toml` の `[vars]` に自宅の緯度経度とカレンダー定義を入れます（`CONFIG_JSON`）。
+カレンダー定義は `CONFIG_JSON` に入れます。**カレンダー ID は個人のメールアドレスを含む**ため、
+リポジトリが公開されている場合は `wrangler.toml` に直接書かず、上記のように **Secret** として登録してください。
+（非公開リポジトリなら `wrangler.toml` の `[vars]` に書いても構いません）
 
 ```toml
 CONFIG_JSON = '''

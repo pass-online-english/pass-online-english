@@ -10,18 +10,20 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import worker from '../src/index.js';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { ROOT, resolveEnv } from './env.mjs';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT || 8787);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
+const vars = resolveEnv();          // .dev.vars → 環境変数 の順に解決
+const hasGoogle = Boolean(vars.GOOGLE_CLIENT_ID && vars.GOOGLE_CLIENT_SECRET && vars.GOOGLE_REFRESH_TOKEN);
+
 const env = {
-  ...process.env,
-  DEMO_MODE: process.env.DEMO_MODE ?? '1',
-  DASHBOARD_TOKEN: process.env.DASHBOARD_TOKEN ?? 'localdev',
+  ...vars,
+  // Google の資格情報が揃っていれば実データ、無ければダミーデータ
+  DEMO_MODE: vars.DEMO_MODE ?? (hasGoogle ? '0' : '1'),
+  DASHBOARD_TOKEN: vars.DASHBOARD_TOKEN ?? 'localdev',
   ASSETS: {
     async fetch(request) {
       const url = new URL(request.url);
@@ -48,5 +50,6 @@ http.createServer(async (req, res) => {
   res.writeHead(response.status, out);
   res.end(Buffer.from(await response.arrayBuffer()));
 }).listen(PORT, () => {
-  console.log('http://localhost:' + PORT + '/?token=' + env.DASHBOARD_TOKEN);
+  console.log((env.DEMO_MODE === '1' ? '[ダミーデータ] ' : '[Google 実データ] ')
+    + 'http://localhost:' + PORT + '/?token=' + env.DASHBOARD_TOKEN);
 });

@@ -1,12 +1,27 @@
-# ローカル開発用のシークレット。`.dev.vars` にコピーして使う（.dev.vars は絶対にコミットしない）
-DASHBOARD_TOKEN=localdev
-DEMO_MODE=1
+# ローカル開発用の設定。`.dev.vars` にコピーして使う（.dev.vars は git に入りません）
+#   cp .dev.vars.example .dev.vars
+#
+# 値を1行で書きます。DEMO_MODE を消すと、Google の3つが揃っていれば自動的に実データになります。
 
-# 本番同様に Google 連携を試す場合のみ設定
+DASHBOARD_TOKEN=localdev
+
+# ダミーデータで見たいときだけ 1 にする
+# DEMO_MODE=1
+
+# --- Google 連携（Google Cloud Console で作成 → get-refresh-token.mjs で取得）---
 # GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
 # GOOGLE_CLIENT_SECRET=xxxxx
 # GOOGLE_REFRESH_TOKEN=1//xxxxx
 
-# Cloudflare Access を併用する場合のみ設定
+# --- カレンダー定義。node scripts/list-google-ids.mjs の出力を1行で貼る ---
+# CONFIG_JSON={"calendars":[{"key":"me","calendarId":"me@gmail.com","displayName":"夫","color":"#4FC3F7","person":"me","enabled":true}]}
+
+# --- 自宅の位置（Google マップで右クリック → 座標をコピー）---
+# LATITUDE=35.681236
+# LONGITUDE=139.767125
+# LOCATION_NAME=東京
+
+# --- Cloudflare Access を併用する場合のみ ---
 # ACCESS_TEAM_DOMAIN=yourteam.cloudflareaccess.com
 # ACCESS_AUD=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# AUTHORIZED_USERS=me@example.com,wife@example.com
