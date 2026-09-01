@@ -17,6 +17,8 @@ import { ga4LagDays, gscLagDays, siteOrigin } from './lib/env.mjs';
 import { collectGa4, summarizeKeyEvents, withDelta } from './ga4.mjs';
 import { collectGsc, withGscDelta } from './search-console.mjs';
 import { extractOpportunities } from './lib/opportunities.mjs';
+import { rankTransitions } from './lib/rank-bands.mjs';
+import { rankBandsMarkdown } from './lib/rank-bands-md.mjs';
 import { combineByPage, impressionsWithoutClicks, trafficWithPoorBehavior, funnelTotals } from './lib/combine.mjs';
 import { schemaNotes } from './lib/ga4-client.mjs';
 import {
@@ -30,7 +32,7 @@ const formats = parseFormats(args.format);
 const pct = (v) => (v === null || v === undefined ? '—' : fmtPct(v));
 const pos = (v) => (v === null || v === undefined ? '—' : v.toFixed(1));
 
-export function buildReport({ range, comparison, ga4, gsc, keyEventInfo, combined, opp, funnel }) {
+export function buildReport({ range, comparison, ga4, gsc, keyEventInfo, combined, opp, funnel, rankBands }) {
   const s = ga4['summary']?.current?.rows?.[0] ?? {};
   const sp = ga4['summary']?.previous?.rows?.[0] ?? null;
   const days = lengthInDays(range);
@@ -411,7 +413,11 @@ export function buildReport({ range, comparison, ga4, gsc, keyEventInfo, combine
   }
 
   // ── 8. SEO 改善候補 ────────────────────────
-  md += `---\n\n## 8. SEO 改善候補\n\n> ${opp.disclaimer}\n\n`;
+  md += `---\n\n## 8. SEO の進み具合と改善候補\n\n> ${opp.disclaimer}\n\n`;
+
+  if (rankBands) {
+    md += rankBandsMarkdown(rankBands, { dimLabel: '検索クエリ', comparison: Boolean(comparison) });
+  }
 
   md += `### A. 順位4〜15位＋表示回数が多い（伸びしろが大きい候補）\n\n`;
   md += mdTable(opp.A_rankingUpside.slice(0, 25), [
@@ -547,6 +553,11 @@ if (isEntrypoint(import.meta.url)) await main(async () => {
     gscQueryPageRows: gscData.results['query-page']?.current.rows ?? [],
   });
   const funnel = funnelTotals(combined.rows);
+  const rankBands = rankTransitions(
+    gscData.results['query']?.current.rows ?? [],
+    gscData.results['query']?.previous?.rows ?? [],
+    'query'
+  );
   const opp = extractOpportunities({
     queryCurrent: gscData.results['query']?.current.rows ?? [],
     queryPrevious: gscData.results['query']?.previous?.rows ?? null,
@@ -570,6 +581,7 @@ if (isEntrypoint(import.meta.url)) await main(async () => {
         combined,
         opp,
         funnel,
+        rankBands,
       })
     );
   }
@@ -596,6 +608,7 @@ if (isEntrypoint(import.meta.url)) await main(async () => {
       combined: { rows: combined.rows, coverage: combined.coverage },
       funnel,
       opportunities: opp,
+      rankBands,
       schemaNotes: {
         substitutions: Object.fromEntries(schemaNotes.substitutions),
         dropped: [...schemaNotes.dropped],
@@ -606,6 +619,11 @@ if (isEntrypoint(import.meta.url)) await main(async () => {
 
   if (formats.includes('csv')) {
     writeCSV(dir, 'combined-pages', combined.rows.map(({ topQueries, matchedIn, ...r }) => ({ ...r, topQueries: topQueries.map((q) => q.query).join(' | ') })));
+    writeCSV(dir, 'rank-bands', rankBands.currentDistribution.bands);
+    writeCSV(dir, 'rank-improved', rankBands.improved);
+    writeCSV(dir, 'rank-declined', rankBands.declined);
+    writeCSV(dir, 'rank-entered', rankBands.entered);
+    writeCSV(dir, 'rank-exited', rankBands.exited);
     writeCSV(dir, 'A-ranking-upside', opp.A_rankingUpside);
     writeCSV(dir, 'B-low-ctr-queries', opp.B_lowCtrQueries);
     writeCSV(dir, 'B-low-ctr-pages', opp.B_lowCtrPages);

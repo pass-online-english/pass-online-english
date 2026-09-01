@@ -18,6 +18,8 @@ import {
 } from './lib/opportunities.mjs';
 import { mergeChunkedReports, withDerivedMetrics, MAX_METRICS_PER_REQUEST } from './lib/ga4-client.mjs';
 import { GA4_REPORTS, GA4_GEO_CROSS_REPORTS, CORE_METRICS } from './lib/ga4-fields.mjs';
+import { bandOf, rankDistribution, rankTransitions } from './lib/rank-bands.mjs';
+import { rankBandsMarkdown } from './lib/rank-bands-md.mjs';
 import { buildReport } from './report.mjs';
 import { summarizeKeyEvents, summaryMarkdown, detailMarkdown, geoCrossMarkdown } from './ga4.mjs';
 import { buildMarkdown as gscMarkdown } from './search-console.mjs';
@@ -307,6 +309,130 @@ test('ゼロ除算が発生しない', () => {
   assert.equal(fmtPct(null), '');
 });
 
+console.log('\n── 順位帯の分布と移動 ────────────────────────');
+
+test('平均順位から正しい順位帯に振り分けられる', () => {
+  assert.equal(bandOf(1), '1-3');
+  assert.equal(bandOf(3), '1-3');
+  assert.equal(bandOf(3.1), '4-10');
+  assert.equal(bandOf(10), '4-10');
+  assert.equal(bandOf(10.1), '11-20');
+  assert.equal(bandOf(20), '11-20');
+  assert.equal(bandOf(50), '21-50');
+  assert.equal(bandOf(50.1), '51+');
+  assert.equal(bandOf(0), null, '順位0は圏外として扱う');
+  assert.equal(bandOf(null), null);
+});
+
+test('順位帯ごとに表示回数・クリック・CTRを集計できる', () => {
+  const d = rankDistribution([
+    { query: 'a', impressions: 100, clicks: 20, position: 2.0 },
+    { query: 'b', impressions: 200, clicks: 10, position: 8.0 },
+    { query: 'c', impressions: 300, clicks: 0, position: 15.0 },
+    { query: 'd', impressions: 400, clicks: 0, position: 60.0 },
+  ]);
+  const byKey = Object.fromEntries(d.bands.map((b) => [b.key, b]));
+  assert.equal(byKey['1-3'].queries, 1);
+  assert.equal(byKey['1-3'].clicks, 20);
+  assert.ok(Math.abs(byKey['1-3'].ctr - 0.2) < 1e-9);
+  assert.equal(byKey['4-10'].impressions, 200);
+  assert.equal(byKey['51+'].queries, 1);
+  assert.equal(d.totals.impressions, 1000);
+  assert.equal(d.totals.clicks, 30);
+  assert.equal(d.totals.topTenQueries, 2, '1〜3位と4〜10位の合計');
+});
+
+test('表示シェアが合計100%になる', () => {
+  const d = rankDistribution([
+    { impressions: 100, clicks: 1, position: 2 },
+    { impressions: 300, clicks: 1, position: 12 },
+  ]);
+  const total = d.bands.reduce((s, b) => s + (b.impressionShare ?? 0), 0);
+  assert.ok(Math.abs(total - 1) < 1e-9);
+});
+
+test('順位が取得できない行は unranked として数える（欠損させない）', () => {
+  const d = rankDistribution([
+    { impressions: 10, clicks: 0, position: 5 },
+    { impressions: 10, clicks: 0, position: 0 },
+    { impressions: 10, clicks: 0, position: null },
+  ]);
+  assert.equal(d.totals.unranked, 2);
+  assert.equal(d.totals.queries, 1);
+});
+
+test('順位帯をまたぐ移動を改善・悪化・横ばいに分類できる', () => {
+  const current = [
+    { query: '改善したやつ', impressions: 100, clicks: 5, position: 8.0 },
+    { query: '悪化したやつ', impressions: 100, clicks: 0, position: 25.0 },
+    { query: '横ばい', impressions: 100, clicks: 2, position: 6.0 },
+    { query: '新規', impressions: 50, clicks: 0, position: 12.0 },
+  ];
+  const previous = [
+    { query: '改善したやつ', impressions: 80, clicks: 1, position: 15.0 },
+    { query: '悪化したやつ', impressions: 90, clicks: 3, position: 9.0 },
+    { query: '横ばい', impressions: 95, clicks: 2, position: 7.5 },
+    { query: '消えたやつ', impressions: 70, clicks: 1, position: 5.0 },
+  ];
+  const t = rankTransitions(current, previous, 'query');
+
+  assert.deepEqual(t.improved.map((r) => r.query), ['改善したやつ']);
+  assert.deepEqual(t.declined.map((r) => r.query), ['悪化したやつ']);
+  assert.deepEqual(t.unchanged.map((r) => r.query), ['横ばい']);
+  assert.deepEqual(t.entered.map((r) => r.query), ['新規']);
+  assert.deepEqual(t.exited.map((r) => r.query), ['消えたやつ']);
+
+  const imp = t.improved[0];
+  assert.equal(imp.band_prev, '11-20');
+  assert.equal(imp.band, '4-10');
+  assert.ok(Math.abs(imp.positionGain - 7) < 1e-9, '順位改善は正の値で表す');
+});
+
+test('1ページ目のクエリ数の増減が算出される', () => {
+  const t = rankTransitions(
+    [
+      { query: 'a', impressions: 10, clicks: 0, position: 5 },
+      { query: 'b', impressions: 10, clicks: 0, position: 9 },
+    ],
+    [{ query: 'a', impressions: 10, clicks: 0, position: 30 }],
+    'query'
+  );
+  assert.equal(t.summary.topTenQueries, 2);
+  assert.equal(t.summary.topTenQueries_prev, 0);
+  assert.equal(t.summary.topTenQueriesDelta, 2);
+});
+
+test('比較期間が空でも落ちず、すべて新規として扱う', () => {
+  const t = rankTransitions([{ query: 'a', impressions: 10, clicks: 0, position: 5 }], [], 'query');
+  assert.equal(t.entered.length, 1);
+  assert.equal(t.improved.length, 0);
+  assert.equal(t.exited.length, 0);
+  assert.equal(t.summary.topTenQueries_prev, 0);
+});
+
+test('順位帯の Markdown が生成される', () => {
+  const t = rankTransitions(
+    [{ query: 'a', impressions: 100, clicks: 5, position: 8 }],
+    [{ query: 'a', impressions: 80, clicks: 1, position: 15 }],
+    'query'
+  );
+  const md = rankBandsMarkdown(t, { dimLabel: '検索クエリ', comparison: true });
+  assert.ok(md.includes('順位帯別の分布'));
+  assert.ok(md.includes('SEO の進捗'));
+  assert.ok(md.includes('1ページ目（10位以内）のクエリ数'));
+  assert.ok(md.includes('上の帯へ移動'));
+  assert.ok(!md.includes('undefined'));
+  assert.ok(!md.includes('NaN'));
+});
+
+test('比較なしでも順位帯の Markdown が落ちない', () => {
+  const t = rankTransitions([{ query: 'a', impressions: 100, clicks: 5, position: 8 }], [], 'query');
+  const md = rankBandsMarkdown(t, { dimLabel: '検索クエリ', comparison: false });
+  assert.ok(md.includes('順位帯の移動は算出していません'));
+  assert.ok(!md.includes('undefined'));
+  assert.ok(!md.includes('NaN'));
+});
+
 console.log('\n── GA4 API の制約 ────────────────────────────');
 
 test('すべてのレポートが指標10個・ディメンション9個の上限内に収まる', () => {
@@ -448,6 +574,7 @@ function renderReport({ withKeyEvents = true, withComparison = true } = {}) {
     range, comparison, ga4, gsc,
     keyEventInfo: summarizeKeyEvents(ga4),
     combined, opp, funnel: funnelTotals(combined.rows),
+    rankBands: rankTransitions(queryRows, withComparison ? gscPrev : [], 'query'),
   });
 }
 
@@ -456,10 +583,12 @@ test('統合レポートが全セクションを含めて生成される', () =>
   for (const heading of [
     '## 1. アクセス概況', '## 2. Google 検索の状況', '## 3. 流入元', '## 4. ランディングページ',
     '## 5. 地域・デバイス', '## 6. コンバージョン', '## 7. Search Console × GA4 統合分析',
-    '## 8. SEO 改善候補', '## 9. このレポートを読むうえでの制約', '## 10. Executive Summary',
+    '## 8. SEO の進み具合と改善候補', '## 9. このレポートを読むうえでの制約', '## 10. Executive Summary',
   ]) {
     assert.ok(md.includes(heading), `${heading} が欠落`);
   }
+  assert.ok(md.includes('順位帯別の分布'), '順位帯セクションが統合レポートに含まれるべき');
+  assert.ok(md.includes('1ページ目（10位以内）のクエリ数'), 'SEO進捗の見出し指標が含まれるべき');
   assert.ok(!md.includes('undefined'), 'undefined が出力に混入している');
   assert.ok(!md.includes('NaN'), 'NaN が出力に混入している');
   assert.ok(!md.includes('Infinity'), 'Infinity が出力に混入している');
