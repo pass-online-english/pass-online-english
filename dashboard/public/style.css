@@ -103,6 +103,20 @@ body { overflow-x: hidden; }
   font-weight: 700;
   letter-spacing: 0.16em;
   color: var(--dim);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.card-title-meta {
+  font-size: .86em;
+  font-weight: 500;
+  letter-spacing: .02em;
+  color: var(--dim);
+  opacity: .85;
+  margin-left: auto;
+  padding-left: 8px;
+  white-space: nowrap;
 }
 .card-title-sub { margin-top: 14px; }
 .card-body { font-size: 16px; }
@@ -169,6 +183,10 @@ body { overflow-x: hidden; }
 /* TONIGHT */
 .prow { display: flex; align-items: baseline; padding: 3px 0; line-height: 1.3; }
 .pname { flex: 0 0 auto; min-width: 3.6em; font-weight: 700; font-size: .86em; letter-spacing: .04em; }
+.dot-p {
+  display: inline-block; width: .62em; height: .62em; border-radius: 50%;
+  margin-right: .4em; vertical-align: baseline;
+}
 .pev { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pev .t { font-variant-numeric: tabular-nums; margin-right: 6px; }
 .none { color: var(--dim); }
@@ -184,7 +202,11 @@ body { overflow-x: hidden; }
 .day.sat .day-date { color: #9dc8ff; }
 .day-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
 .day-date { font-size: 15px; font-weight: 700; }
-.day-date .wd { font-size: .82em; margin-left: 4px; color: var(--muted); }
+.day-date .wd { font-size: .82em; margin-left: 1px; color: var(--muted); }
+.day-date .tag {
+  font-size: .68em; margin-left: 5px; padding: 0 5px; border-radius: 999px;
+  border: 1px solid var(--accent); color: var(--accent); letter-spacing: 0; vertical-align: middle;
+}
 .day.today .day-date .wd { color: var(--accent); }
 .day-weather { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .day-weather .ic { margin-right: 3px; }

@@ -79,7 +79,8 @@ export function demoTasks(config, offsetMin, today) {
 export function demoWeather(config, offsetMin, today) {
   const codes = [3, 61, 1, 0, 2, 80, 3, 1];
   const daily = [];
-  for (let i = 0; i < 8; i++) {
+  const span = Math.max(8, (Number(config.weekStartOffset) || 0) + (Number(config.daysToDisplay) || 7) + 1);
+  for (let i = 0; i < span; i++) {
     const date = addDays(today, i);
     const code = codes[i % codes.length];
     daily.push({

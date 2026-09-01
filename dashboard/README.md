@@ -19,12 +19,12 @@
 | ヘッダー | 現在時刻・日付・曜日 / 現在の天気・最高最低・降水確率 / 各データの更新状態 |
 | NEXT | 進行中の予定(NOW) と 次の予定（開始時刻・タイトル・あと何分） |
 | TODAY | 今日の予定 ＋ 期限超過/今日期限のタスク ＋ 今日の天気の注意 |
-| TONIGHT | 夕方以降(既定17:00〜)の予定を人物ごとに ＋ 夜の天気 |
-| 7 DAYS | 今日を含む7日間（日付・曜日・天気・予定、超過分は「+N件」） |
-| TASKS | 期限超過 → 今日 → 近日 の順（完了済みは非表示） |
+| TONIGHT | 夕方以降(既定17:00〜)の予定を人物ごとに（7 DAYS と同じ色の丸付き）＋ 夜の天気 |
+| 7 DAYS | 明後日からの7日間（`weekStartOffset` で変更可。日付・曜日・天気・予定、超過分は「+N件」） |
+| TASKS | 期限超過 → 今日 → 近日 の順（完了済みは非表示。総量は見出しの「期限超過n · 全m件」で把握） |
 | TOMORROW | 明日の天気・主な予定・タスク（既定20:00以降は枠を強調） |
-| COMING UP | 7日より先の重要予定（重要カレンダー or タイトルのタグで判定） |
-| FREE TOGETHER | 二人とも空いている時間帯（予定の隙間から算出） |
+| COMING UP | 7 DAYS より先の重要予定。判定基準（★ / 重要カレンダー）は見出しに表示 |
+| FREE TOGETHER | 二人とも予定が入っていない時間帯（平日18:00〜23:00 / 週末10:00〜、1時間以上連続。すべて設定可） |
 
 カードは**枠に収まるまで優先度の低い行から自動的に省略**され（終了済みの予定 → 通常行の順）、
 天気の注意・期限超過タスクは最後まで残ります。スクロールは発生しません。
@@ -93,7 +93,7 @@ npx wrangler deploy
 CONFIG_JSON = '''
 {
   "calendars": [
-    { "key": "me",     "calendarId": "me@gmail.com",   "displayName": "自分", "color": "#4FC3F7", "person": "me",     "enabled": true },
+    { "key": "me",     "calendarId": "me@gmail.com",   "displayName": "夫",   "color": "#4FC3F7", "person": "me",     "enabled": true },
     { "key": "wife",   "calendarId": "wife@gmail.com", "displayName": "妻",   "color": "#F48FB1", "person": "wife",   "enabled": true },
     { "key": "shared", "calendarId": "xxx@group.calendar.google.com", "displayName": "共通", "color": "#A5D6A7", "person": "shared", "enabled": true }
   ],
@@ -144,9 +144,10 @@ https://<your-worker>.workers.dev/?token=<DASHBOARD_TOKEN>
 | `timezone` | `Asia/Tokyo` | 表示タイムゾーン |
 | `latitude` / `longitude` | 東京駅 | 天気取得位置 |
 | `locationName` | `東京` | 画面に出す地名 |
-| `calendars[]` | 自分/妻/共通 | `key` `calendarId` `displayName` `color` `person` `enabled` |
+| `calendars[]` | 夫/妻/共通 | `key` `calendarId` `displayName` `color` `person` `enabled` |
 | `taskLists[]` | `@default` | `id` `name` `enabled` |
 | `daysToDisplay` | `7` | 7 DAYS の日数 |
+| `weekStartOffset` | `2` | 7 DAYS の開始日（今日から何日後か）。`2` = 明後日から（今日は TODAY、明日は TOMORROW が担当するため重複しない）。`0` にすると「今日を含む7日間」 |
 | `maxEventsPerDay` | `4` | 1日あたりの最大表示件数 |
 | `maxTodayEvents` | `6` | TODAY の最大件数 |
 | `maxTasks` | `6` | TASKS の最大件数 |
@@ -156,7 +157,7 @@ https://<your-worker>.workers.dev/?token=<DASHBOARD_TOKEN>
 | `nextLookaheadHours` | `36` | NEXT を探す範囲 |
 | `refresh.calendar / tasks / weather / clock / page` | 5分 / 5分 / 30分 / 1秒 / 6時間 | 更新間隔(ms) |
 | `refresh.retryBaseMs / retryMaxMs` | 15秒 / 5分 | 失敗時の指数バックオフ |
-| `comingUp` | 3件 / 30日 | `importantCalendarId`・`importantTags` で重要判定 |
+| `comingUp` | 3件 / 30日 | 7 DAYS より先の予定を拾う。`mode: "important"`（既定）は `importantCalendarId` のカレンダー、またはタイトルに `importantTags`（既定 `★` `【重要】` `#imp`）を含む予定のみ。`mode: "all"` にすると重要判定をせず単に直近から3件 |
 | `nightMode` | 00:00–06:00 | 深夜は減光し、時計中心の簡易表示に |
 | `freeTogether` | 平日18:00–23:00 / 週末10:00〜 | 空き時間の算出条件 |
 | `weatherThresholds` | 雨50% / 猛暑35℃ / 寒暖差10℃ ほか | 天気コメントの判定閾値 |

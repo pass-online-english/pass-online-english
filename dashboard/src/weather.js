@@ -47,7 +47,8 @@ function round(v, digits = 0) {
 /** Open-Meteo から取得して正規化する */
 export async function fetchWeather(config, options = {}) {
   const offsetMin = options.offsetMin;
-  const days = Math.min(16, Math.max(8, (Number(config.daysToDisplay) || 7) + 1));
+  const span = (Number(config.weekStartOffset) || 0) + (Number(config.daysToDisplay) || 7) + 1;
+  const days = Math.min(16, Math.max(8, span));
   const url = 'https://api.open-meteo.com/v1/forecast'
     + '?latitude=' + encodeURIComponent(config.latitude)
     + '&longitude=' + encodeURIComponent(config.longitude)

@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG = {
   // 複数カレンダー。種類はコードに固定せず、ここで自由に定義する(要件11)。
   // person は色分け・TONIGHT・FREE TOGETHER のグルーピングに使う(要件12)。
   calendars: [
-    { key: 'me',     calendarId: 'primary', displayName: '自分', color: '#4FC3F7', person: 'me',     enabled: true },
+    { key: 'me',     calendarId: 'primary', displayName: '夫',   color: '#4FC3F7', person: 'me',     enabled: true },
     { key: 'wife',   calendarId: '',        displayName: '妻',   color: '#F48FB1', person: 'wife',   enabled: false },
     { key: 'shared', calendarId: '',        displayName: '共通', color: '#A5D6A7', person: 'shared', enabled: false },
   ],
@@ -24,6 +24,10 @@ export const DEFAULT_CONFIG = {
   ],
 
   daysToDisplay: 7,
+  // 7 DAYS の開始日を今日から何日後にするか。
+  // 既定の 2 は「今日は TODAY、明日は TOMORROW が担当」なので明後日から始める設定。
+  // 0 にすると要件どおり「今日を含む7日間」になる。
+  weekStartOffset: 2,
   maxEventsPerDay: 4,
   maxTodayEvents: 6,
   maxTasks: 6,
@@ -31,6 +35,8 @@ export const DEFAULT_CONFIG = {
   // COMING UP(要件16)
   comingUp: {
     enabled: true,
+    // 'important' = 重要カレンダー / タグの予定だけ、'all' = 期間より先の直近の予定
+    mode: 'important',
     maxItems: 3,
     lookaheadDays: 30,
     importantCalendarId: '',
@@ -156,6 +162,7 @@ export function loadConfig(env = {}) {
   if (num(env.DAYS_TO_DISPLAY) !== undefined) scalar.daysToDisplay = num(env.DAYS_TO_DISPLAY);
   if (num(env.MAX_EVENTS_PER_DAY) !== undefined) scalar.maxEventsPerDay = num(env.MAX_EVENTS_PER_DAY);
   if (num(env.MAX_TASKS) !== undefined) scalar.maxTasks = num(env.MAX_TASKS);
+  if (num(env.WEEK_START_OFFSET) !== undefined) scalar.weekStartOffset = num(env.WEEK_START_OFFSET);
   if (env.TONIGHT_START_TIME) scalar.tonightStartTime = env.TONIGHT_START_TIME;
   if (env.TOMORROW_EMPHASIS_TIME) scalar.tomorrowEmphasisTime = env.TOMORROW_EMPHASIS_TIME;
   if (env.IMPORTANT_CALENDAR_ID) scalar.comingUp = { importantCalendarId: env.IMPORTANT_CALENDAR_ID };
@@ -208,10 +215,17 @@ export function publicConfig(config, extra = {}) {
       .filter((c) => c.enabled)
       .map((c) => ({ key: c.key, displayName: c.displayName, color: c.color, person: c.person })),
     daysToDisplay: config.daysToDisplay,
+    weekStartOffset: config.weekStartOffset,
     maxEventsPerDay: config.maxEventsPerDay,
     maxTodayEvents: config.maxTodayEvents,
     maxTasks: config.maxTasks,
-    comingUp: { enabled: config.comingUp.enabled, maxItems: config.comingUp.maxItems },
+    comingUp: {
+      enabled: config.comingUp.enabled,
+      mode: config.comingUp.mode,
+      maxItems: config.comingUp.maxItems,
+      importantTags: config.comingUp.importantTags,
+      hasImportantCalendar: Boolean(config.comingUp.importantCalendarId),
+    },
     nextIncludesAllDay: config.nextIncludesAllDay,
     nextLookaheadHours: config.nextLookaheadHours,
     tonightStartTime: config.tonightStartTime,

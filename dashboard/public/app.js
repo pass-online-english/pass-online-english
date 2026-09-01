@@ -191,8 +191,8 @@
     var t = now();
     var p = P(t);
     $('clock').innerHTML = pad(p.h) + ':' + pad(p.mi);
-    $('date').innerHTML = p.mo + '月' + p.d + '日';
-    $('weekday').innerHTML = WD[p.w] + '曜日 · ' + p.y;
+    $('date').innerHTML = p.mo + '月' + p.d + '日(' + WD[p.w] + ')';
+    $('weekday').innerHTML = p.y + '年';
     applyNightMode(p);
   }
 
@@ -289,6 +289,7 @@
     var moreEl = null;
 
     function ensureMore() {
+      if (unit === false) return;   // 件数表示が役に立たないカードでは出さない
       if (!moreEl) {
         moreEl = document.createElement('div');
         moreEl.className = 'more';
@@ -417,10 +418,10 @@
     for (i = 0; i < persons.length; i++) {
       var p = persons[i];
       var list = byPerson[p.person] || [];
-      var nameCell = '<span class="pname" style="color:' + esc(p.color) + '">' + esc(p.label) + '</span>';
+      var nameCell = '<span class="pname" style="color:' + esc(p.color) + '">'
+        + '<span class="dot-p" style="background:' + esc(p.color) + '"></span>' + esc(p.label) + '</span>';
       if (!list.length) {
-        html += '<div class="prow"><span class="pname" style="color:' + esc(p.color) + '">' + esc(p.label)
-          + '</span><span class="pev none">予定なし</span></div>';
+        html += '<div class="prow">' + nameCell + '<span class="pev none">予定なし</span></div>';
       } else {
         for (var j = 0; j < list.length; j++) {
           html += '<div class="prow">' + (j === 0 ? nameCell : '<span class="pname"></span>')
@@ -472,21 +473,24 @@
     var t = now();
     var today = todayKey();
     var days = CFG.daysToDisplay || 7;
+    var offset = CFG.weekStartOffset || 0;   // 既定は明後日から（今日=TODAY、明日=TOMORROW と重複させない）
     var maxEvents = CFG.maxEventsPerDay || 4;
     var html = '<div class="week">';
     var overflow = [];
 
     for (var i = 0; i < days; i++) {
-      var key = addDaysKey(today, i);
+      var key = addDaysKey(today, i + offset);
       var wd = weekdayOfKey(key);
       var d = dailyFor(key);
       var list = eventsOn(key);
-      var cls = 'day' + (i === 0 ? ' today' : '') + (wd === 0 ? ' weekend' : '') + (wd === 6 ? ' sat' : '');
+      var dayOffset = i + offset;
+      var cls = 'day' + (dayOffset === 0 ? ' today' : '') + (wd === 0 ? ' weekend' : '') + (wd === 6 ? ' sat' : '');
+      var tag = dayOffset === 0 ? '<span class="tag">今日</span>' : (dayOffset === 1 ? '<span class="tag">明日</span>' : '');
       overflow.push(Math.max(0, list.length - maxEvents));
 
       html += '<div class="' + cls + '">'
         + '<div class="day-head"><div class="day-date">' + shortDate(key)
-        + '<span class="wd">' + WD[wd] + (i === 0 ? '·今日' : (i === 1 ? '·明日' : '')) + '</span></div>'
+        + '<span class="wd">(' + WD[wd] + ')</span>' + tag + '</div>'
         + '<div class="day-weather">'
         + (d ? '<span class="ic">' + esc(d.icon) + '</span><span class="hi">' + d.tmax + '</span>/'
              + '<span class="lo">' + d.tmin + '</span>'
@@ -512,6 +516,8 @@
 
     var cols = $('week-body').getElementsByClassName('day-events');
     for (var c = 0; c < cols.length; c++) fitBody(cols[c], '件', overflow[c] || 0);
+
+    $('week-range').innerHTML = shortDate(addDaysKey(today, offset)) + ' → ' + shortDate(addDaysKey(today, offset + days - 1));
   }
 
   function renderTasks() {
@@ -547,7 +553,11 @@
     }
     if (!ts.length) html += '<div class="empty">タスクはありません</div>';
     $('tasks-body').innerHTML = html;
-    fitBody($('tasks-body'), ' tasks', Math.max(0, ts.length - shown));
+    // 画面はタップできないので件数の「+N」は出さず、総量は見出しで伝える
+    fitBody($('tasks-body'), false, 0);
+    $('tasks-meta').innerHTML = ts.length
+      ? (overdue.length ? '<span style="color:var(--alert)">期限超過 ' + overdue.length + '</span> · ' : '') + '全' + ts.length + '件'
+      : '';
   }
 
   function renderComingUp() {
@@ -556,18 +566,33 @@
       $('coming-body').style.display = 'none';
       return;
     }
-    var after = addDaysKey(todayKey(), (CFG.daysToDisplay || 7) - 1);
+    var lastShown = (CFG.weekStartOffset || 0) + (CFG.daysToDisplay || 7) - 1;
+    var after = addDaysKey(todayKey(), lastShown);
+    var onlyImportant = (CFG.comingUp.mode || 'important') !== 'all';
     var all = events();
     var out = [];
     for (var i = 0; i < all.length && out.length < (CFG.comingUp.maxItems || 3); i++) {
-      if (all[i].important && all[i].startDay > after) out.push(all[i]);
+      if (all[i].startDay <= after) continue;
+      if (onlyImportant && !all[i].important) continue;
+      out.push(all[i]);
     }
+
+    // 何を基準に拾っているかを画面上で分かるようにする
+    var tags = (CFG.comingUp.importantTags || []).slice(0, 2).join(' ');
+    $('coming-meta').innerHTML = onlyImportant
+      ? esc((CFG.comingUp.hasImportantCalendar ? '重要カレンダー / ' : '') + (tags || 'タグ'))
+      : shortDate(addDaysKey(todayKey(), lastShown + 1)) + '以降';
+
     var html = '';
     for (var j = 0; j < out.length; j++) {
       html += '<div class="coming"><span class="d">' + shortDate(out[j].startDay) + '</span>'
         + calDot(out[j]) + '<span class="n">' + esc(out[j].title) + '</span></div>';
     }
-    if (!out.length) html += '<div class="empty">—</div>';
+    if (!out.length) {
+      var hint = (tags ? tags.split(' ')[0] + ' ' : '')
+        + (CFG.comingUp.hasImportantCalendar ? 'か重要カレンダー' : '') + 'を付けた予定がここに出ます';
+      html += '<div class="empty">' + (onlyImportant ? esc(hint) : '—') + '</div>';
+    }
     $('coming-body').innerHTML = html;
     fitBody($('coming-body'), '件', 0);
   }

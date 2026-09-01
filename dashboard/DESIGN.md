@@ -131,7 +131,7 @@ dashboard/
 ```json
 {
   "calendars": [
-    { "key": "me",     "calendarId": "me@gmail.com",  "displayName": "自分", "color": "#4FC3F7", "person": "me",     "enabled": true },
+    { "key": "me",     "calendarId": "me@gmail.com",  "displayName": "夫",   "color": "#4FC3F7", "person": "me",     "enabled": true },
     { "key": "wife",   "calendarId": "wife@gmail.com","displayName": "妻",   "color": "#F48FB1", "person": "wife",   "enabled": true },
     { "key": "shared", "calendarId": "xxx@group.calendar.google.com", "displayName": "共通", "color": "#A5D6A7", "person": "shared", "enabled": true }
   ],
@@ -171,7 +171,7 @@ dashboard/
 | タスクリスト | `@default` 1つ | `CONFIG_JSON.taskLists` |
 | 独自ドメイン有無 | 無し（`*.workers.dev` で動作） | `wrangler.toml` の routes |
 | Access 利用有無 | 未設定でもデバイストークンのみで運用可 | `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` |
-| 夫婦の呼称 | 「自分」「妻」「共通」 | `CONFIG_JSON.calendars[].displayName` |
+| 夫婦の呼称 | 「夫」「妻」「共通」 | `CONFIG_JSON.calendars[].displayName` |
 | 終日イベントを NEXT に含めるか | 含めない | `nextIncludesAllDay` |
 | 夜間モード | 00:00–06:00 に減光 | `nightMode` |
 | 障害メール通知 (Could) | 未実装（画面上のバッジと `/api/health` で代替） | 将来 Cron Trigger で追加可能 |
