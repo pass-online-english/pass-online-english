@@ -15,6 +15,7 @@
     "analytics:ga4": "node scripts/analytics/ga4.mjs",
     "analytics:gsc": "node scripts/analytics/search-console.mjs",
     "analytics:insights": "node scripts/analytics/insights.mjs",
+    "analytics:keywords": "node scripts/analytics/keywords.mjs",
     "analytics:report": "node scripts/analytics/report.mjs",
     "analytics:selftest": "node scripts/analytics/selftest.mjs"
   },

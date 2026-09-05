@@ -56,6 +56,7 @@ npm run analytics:report -- --days 28 # 統合レポートの生成
 | `npm run analytics:ga4` | GA4 データの取得 |
 | `npm run analytics:gsc` | Search Console データの取得 |
 | `npm run analytics:insights` | SEO 改善候補の抽出 |
+| `npm run analytics:keywords` | 検索ボリュームとの突き合わせ（キーワードギャップ） |
 | `npm run analytics:report` | GA4 × Search Console 統合レポート |
 | `npm run analytics:selftest` | 分析ロジックの自己テスト（API接続なし） |
 
