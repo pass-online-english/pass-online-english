@@ -11,6 +11,7 @@ site/                 本番にアップロードするファイル一式（サ�
 scripts/analytics/    GA4 / Search Console 分析ツール（読み取り専用）
 docs/DEPLOY.md        サイトの管理とデプロイ手順
 docs/ANALYTICS.md     分析ツールの使い方
+data/keyword-planner/ キーワードプランナーのCSV（検索ボリューム）
 reports/              分析結果の出力先（.gitignore 済み）
 ```
 
@@ -43,6 +44,7 @@ reports/              分析結果の出力先（.gitignore 済み）
 | GA4 だけ | `npm run analytics:ga4 -- --days 28` |
 | Search Console だけ | `npm run analytics:gsc -- --days 28` |
 | SEO 改善候補だけ | `npm run analytics:insights -- --days 28` |
+| 狙うべきキーワードと取りこぼし | `npm run analytics:keywords -- --days 28` |
 | 地域の偏りを調べる | `npm run analytics:ga4 -- --days 28 --geo-cross` |
 | 設定・疎通が怪しいとき | `npm run analytics:doctor` |
 | 認証が切れた／未設定のとき | `npm run analytics:login`（ブラウザ認証・gcloud 不要） |
@@ -63,6 +65,8 @@ reports/              分析結果の出力先（.gitignore 済み）
 - **Search Console のクエリ別合計はサイト全体値と一致しない。**
   検索数の少ないクエリが非開示になる仕様。
 - **SEO 改善候補は「候補」。** 実際の検索結果とページ内容の確認が前提。
+- **検索ボリュームは丸められた代表値。** 広告費のないアカウントでは
+  50 / 500 / 5,000 / 50,000 の段階値になる。絶対値ではなく規模の桁として扱う。
 - **総数ではなく率で見る。** 2026年8月はXでのバズにより3日間で全体の73%の
   セッションが発生した。こうした単発の流入があると総数の比較は意味を持たない。
 

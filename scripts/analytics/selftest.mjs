@@ -19,6 +19,9 @@ import {
 import { mergeChunkedReports, withDerivedMetrics, MAX_METRICS_PER_REQUEST } from './lib/ga4-client.mjs';
 import { GA4_REPORTS, GA4_GEO_CROSS_REPORTS, CORE_METRICS } from './lib/ga4-fields.mjs';
 import { bandOf, rankDistribution, rankTransitions } from './lib/rank-bands.mjs';
+import { normalizeKeyword, decodeFile, loadKeywordPlannerDir } from './lib/keyword-planner.mjs';
+import { buildKeywordGap, volumeBuckets } from './lib/keyword-gap.mjs';
+import { keywordGapMarkdown } from './keywords.mjs';
 import { rankBandsMarkdown } from './lib/rank-bands-md.mjs';
 import { buildReport } from './report.mjs';
 import { summarizeKeyEvents, summaryMarkdown, detailMarkdown, geoCrossMarkdown } from './ga4.mjs';
@@ -429,6 +432,105 @@ test('比較なしでも順位帯の Markdown が落ちない', () => {
   const t = rankTransitions([{ query: 'a', impressions: 100, clicks: 5, position: 8 }], [], 'query');
   const md = rankBandsMarkdown(t, { dimLabel: '検索クエリ', comparison: false });
   assert.ok(md.includes('順位帯の移動は算出していません'));
+  assert.ok(!md.includes('undefined'));
+  assert.ok(!md.includes('NaN'));
+});
+
+console.log('\n── キーワードギャップ ────────────────────────');
+
+test('キーワードプランナーの分かち書きを吸収して突き合わせられる', () => {
+  // プランナーは「英 検 2 級 ライティング」、Search Console は「英検2級 ライティング」で出る
+  assert.equal(normalizeKeyword('英 検 2 級 ライティング'), normalizeKeyword('英検2級 ライティング'));
+  assert.equal(normalizeKeyword('ＴＯＥＩＣ ９９０'), normalizeKeyword('toeic990'));
+  assert.equal(normalizeKeyword('  英検  オンライン  '), '英検オンライン');
+});
+
+test('UTF-16LE / UTF-8 のどちらでも復号できる', () => {
+  const text = 'Keyword\tAvg. monthly searches\n英検\t500\n';
+  const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]);
+  assert.ok(decodeFile(utf16).startsWith('Keyword'));
+  assert.ok(decodeFile(Buffer.from(text, 'utf8')).startsWith('Keyword'));
+});
+
+test('実際のキーワードプランナーCSVを読み込める', () => {
+  const { keywords, errors } = loadKeywordPlannerDir(new URL('../../data/keyword-planner', import.meta.url).pathname);
+  assert.deepEqual(errors, [], 'パースエラーが出てはいけない');
+  assert.ok(keywords.length > 50, `キーワードが少なすぎる: ${keywords.length}`);
+  const top = keywords[0];
+  assert.ok(top.volume > 0);
+  assert.ok(top.keyword.length > 0);
+  // 集計行（キーワードが空の「すべて」「日本」行）が混入していないこと
+  assert.ok(keywords.every((k) => k.keyword.trim() !== ''));
+});
+
+test('未獲得・あと一歩・獲得済みを分類できる', () => {
+  const kws = [
+    { keyword: '英 検 2 級 ライティング', normalized: normalizeKeyword('英 検 2 級 ライティング'), volume: 50000, competition: '低' },
+    { keyword: '英 検 使える 大学', normalized: normalizeKeyword('英 検 使える 大学'), volume: 500, competition: '低' },
+    { keyword: 't o e i c 9 9 0', normalized: normalizeKeyword('toeic 990'), volume: 500, competition: '低' },
+  ];
+  const gsc = [
+    { query: '英検 使える大学', clicks: 0, impressions: 2, ctr: 0, position: 51.5 },
+    { query: 'toeic990', clicks: 3, impressions: 96, ctr: 0.031, position: 8.0 },
+  ];
+  const gap = buildKeywordGap(kws, gsc, { days: 28 });
+  const byKw = Object.fromEntries(gap.rows.map((r) => [r.normalized, r]));
+
+  assert.equal(byKw['英検2級ライティング'].status, '未獲得');
+  assert.equal(byKw['英検2級ライティング'].position, null);
+  assert.equal(byKw['英検使える大学'].status, '露出のみ', '51位は露出のみ');
+  assert.equal(byKw['toeic990'].status, '刈り取り余地', '8位は1ページ目');
+  assert.equal(byKw['toeic990'].impressions, 96);
+});
+
+test('ボリュームが大きく未獲得のものが最優先で上に来る', () => {
+  const kws = [
+    { keyword: '小さい', normalized: '小さい', volume: 50 },
+    { keyword: '大きい', normalized: '大きい', volume: 50000 },
+  ];
+  const gap = buildKeywordGap(kws, [], { days: 28 });
+  assert.equal(gap.rows[0].keyword, '大きい');
+  assert.ok(gap.rows[0].opportunityClicksPerMonth > gap.rows[1].opportunityClicksPerMonth);
+});
+
+test('GSCのクリックを月換算してから機会を計算する', () => {
+  const kws = [{ keyword: 'k', normalized: 'k', volume: 10000 }];
+  const gap = buildKeywordGap(kws, [{ query: 'k', clicks: 14, impressions: 500, ctr: 0.028, position: 5 }], { days: 28 });
+  // 28日で14クリック → 月換算15クリック
+  assert.equal(gap.rows[0].clicksPerMonth, 15);
+  assert.equal(gap.rows[0].opportunityClicksPerMonth, gap.rows[0].potentialClicksPerMonth - 15);
+});
+
+test('調査リストに無いGSCクエリを取りこぼさない', () => {
+  const gap = buildKeywordGap(
+    [{ keyword: 'あるやつ', normalized: 'あるやつ', volume: 500 }],
+    [
+      { query: 'あるやつ', clicks: 0, impressions: 10, ctr: 0, position: 9 },
+      { query: '調べてないクエリ', clicks: 1, impressions: 300, ctr: 0.003, position: 12 },
+    ],
+    { days: 28 }
+  );
+  assert.equal(gap.unlisted.length, 1);
+  assert.equal(gap.unlisted[0].query, '調べてないクエリ');
+});
+
+test('ボリューム未取得（null）でも落ちない', () => {
+  const gap = buildKeywordGap([{ keyword: 'x', normalized: 'x', volume: null }], [], { days: 28 });
+  assert.equal(gap.rows[0].volume, null);
+  assert.equal(gap.rows[0].opportunityClicksPerMonth, null);
+  assert.equal(gap.summary.totalOpportunity, 0);
+});
+
+test('キーワードギャップの Markdown が生成される', () => {
+  const kws = [
+    { keyword: '英 検 2 級 ライティング', normalized: normalizeKeyword('英 検 2 級 ライティング'), volume: 50000, competition: '低' },
+    { keyword: 'toeic 990', normalized: 'toeic990', volume: 500, competition: '低' },
+  ];
+  const gap = buildKeywordGap(kws, [{ query: 'toeic990', clicks: 3, impressions: 96, ctr: 0.031, position: 8 }], { days: 28 });
+  const md = keywordGapMarkdown(gap, volumeBuckets(gap.rows), { startDate: '2026-08-01', endDate: '2026-08-28' }, { files: ['a.csv'] });
+  assert.ok(md.includes('キーワードギャップ分析'));
+  assert.ok(md.includes('最優先：需要が大きいのに未獲得'));
+  assert.ok(md.includes('丸められた代表値'), 'ボリュームの限界を明記すべき');
   assert.ok(!md.includes('undefined'));
   assert.ok(!md.includes('NaN'));
 });
