@@ -85,17 +85,51 @@ export function isSameDocumentNavigation(from, to) {
   }
 }
 
+const PRICE_TEXT_RE = /(?:¥\s*\d|\d[\d,]*\s*円)/;
+
+/** フレーム内の本文テキスト（取れなければ空文字）。 */
+async function frameText(frame) {
+  return frame.evaluate(() => (document.body ? document.body.innerText : '')).catch(() => '');
+}
+
 /**
  * 価格らしきテキストが現れるまで待つ。
  * SPA は HTML が空の状態で返ってきて、あとから JS が描画するため、
  * domcontentloaded だけでは早すぎる。
+ * 中身が iframe に入っているサイトもあるので、全フレームを見る。
  */
 export async function waitForPrices(page, timeout = 15_000) {
-  await page.waitForFunction(
-    () => /(?:¥\s*\d|\d[\d,]*\s*円)/.test(document.body ? document.body.innerText : ''),
-    undefined,
-    { timeout, polling: 500 }
-  );
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      if (PRICE_TEXT_RE.test(await frameText(frame))) return true;
+    }
+    await sleep(500);
+  }
+  return false;
+}
+
+/** 各フレームの状態。0件だったときの原因切り分けに使う。 */
+export async function describeFrames(page) {
+  const out = [];
+  for (const frame of page.frames()) {
+    const info = await frame
+      .evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        textLength: document.body ? document.body.innerText.trim().length : 0,
+        htmlLength: document.documentElement ? document.documentElement.innerHTML.length : 0,
+        elements: document.querySelectorAll('*').length,
+        // Vue / React などのマウント先が空のままかどうか
+        mountPoint: (() => {
+          const el = document.querySelector('#app, #root, [data-server-rendered], main');
+          return el ? { selector: el.id ? `#${el.id}` : el.tagName.toLowerCase(), children: el.childElementCount } : null;
+        })(),
+      }))
+      .catch((err) => ({ url: frame.url(), error: String(err.message).split('\n')[0] }));
+    out.push(info);
+  }
+  return out;
 }
 
 /**
@@ -108,7 +142,7 @@ export async function openList(page, url, { waitMs = 1500, scroll = true } = {})
   if (sameDoc) await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   // 価格が出てこないページ（ログイン画面など）でも止まらないよう、待てなければ先に進む
-  await waitForPrices(page).catch(() => {});
+  await waitForPrices(page);
   await sleep(waitMs);
   if (scroll) {
     await page.evaluate(pageAutoScroll, {}).catch(() => {});
@@ -116,9 +150,23 @@ export async function openList(page, url, { waitMs = 1500, scroll = true } = {})
   }
 }
 
-/** 現在のページから商品を抽出する。 */
+/**
+ * 現在のページから商品を抽出する。
+ * 本体のフレームで取れなければ、iframe の中も順に見る
+ * （売場を iframe に入れているサイトがあるため）。
+ */
 export async function extractFromPage(page, selectors) {
-  return page.evaluate(pageExtract, { selectors: selectors || {} });
+  const arg = { selectors: selectors || {} };
+  const main = await page.evaluate(pageExtract, arg).catch(() => null);
+  if (main && main.count > 0) return main;
+
+  let best = main;
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    const res = await frame.evaluate(pageExtract, arg).catch(() => null);
+    if (res && res.count > (best?.count ?? 0)) best = { ...res, frameUrl: frame.url() };
+  }
+  return best ?? { mode: 'failed', count: 0, items: [], selectors: {}, diagnostics: [] };
 }
 
 /**

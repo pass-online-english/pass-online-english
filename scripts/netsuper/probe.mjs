@@ -16,7 +16,7 @@ import { parseCliArgs, parseLimit } from '../analytics/lib/args.mjs';
 import { main, log, section } from '../analytics/lib/cli.mjs';
 import { outputRoot, ensureDir, relativeToCwd } from './lib/paths.mjs';
 import { loadConfig, configExists, updateSelectors, ConfigError } from './lib/config.mjs';
-import { openBrowser, firstPage, openList, extractFromPage, hasSession } from './lib/browser.mjs';
+import { openBrowser, firstPage, openList, extractFromPage, describeFrames, hasSession } from './lib/browser.mjs';
 import { pickPrice, extractUnit } from './lib/price.mjs';
 
 const HELP = `
@@ -36,6 +36,7 @@ main(async () => {
     url: { type: 'string' },
     save: { type: 'boolean' },
     headed: { type: 'boolean' },
+    wait: { type: 'string' },
   });
   if (values.help) { log(HELP); return; }
   const limit = parseLimit(values.limit, 8);
@@ -50,16 +51,32 @@ main(async () => {
     log('  `npm run netsuper:login` を先に実行してください。\n');
   }
 
+  const waitMs = values.wait === undefined ? (cfg?.waitMs ?? 1500) : Number(values.wait);
+  if (!Number.isFinite(waitMs) || waitMs < 0) throw new Error('--wait はミリ秒（0以上の数値）で指定してください。');
+
   const context = await openBrowser({ headed: Boolean(values.headed) });
   let res;
   let dir;
   let bodyText = '';
   let finalUrl = url;
+  let frames = [];
+  // 未捕捉の例外は描画停止の直接原因になる。console のエラー（画像404など）は参考情報。
+  const problems = { errors: [], console: [], failedRequests: [] };
   try {
     const page = await firstPage(context);
-    await openList(page, url, { waitMs: cfg?.waitMs ?? 1500 });
+    // 描画されない原因は JS エラーか通信の失敗であることが多いので拾っておく
+    page.on('pageerror', (err) => problems.errors.push(String(err.message).split('\n')[0]));
+    page.on('console', (m) => {
+      if (m.type() === 'error') problems.console.push(m.text().slice(0, 200));
+    });
+    page.on('requestfailed', (req) => {
+      problems.failedRequests.push(`${req.failure()?.errorText ?? 'failed'} ${req.url().slice(0, 120)}`);
+    });
+
+    await openList(page, url, { waitMs });
     res = await extractFromPage(page, cfg?.selectors);
     finalUrl = page.url();
+    frames = await describeFrames(page);
     bodyText = await page
       .evaluate(() => (document.body ? document.body.innerText.replace(/\n{2,}/g, '\n') : ''))
       .catch(() => '');
@@ -68,7 +85,11 @@ main(async () => {
     fs.writeFileSync(path.join(dir, 'page.html'), await page.content(), 'utf8');
     fs.writeFileSync(path.join(dir, 'page.txt'), bodyText, 'utf8');
     await page.screenshot({ path: path.join(dir, 'page.png'), fullPage: false }).catch(() => {});
-    fs.writeFileSync(path.join(dir, 'extract.json'), `${JSON.stringify(res, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(
+      path.join(dir, 'extract.json'),
+      `${JSON.stringify({ url, finalUrl, frames, problems, result: res }, null, 2)}\n`,
+      'utf8'
+    );
   } finally {
     await context.close();
   }
@@ -86,18 +107,51 @@ main(async () => {
     log(`  価格らしきテキストを含む要素: ${res.priceNodeCount ?? 0} 個`);
     section('実際に表示されていた文言（先頭600文字）');
     log(bodyText.trim() ? bodyText.trim().slice(0, 600) : '（本文が空。JS の描画が終わっていない可能性があります）');
+    section('ページの状態');
+    for (const f of frames) {
+      if (f.error) { log(`  ${f.url} — 読めませんでした（${f.error}）`); continue; }
+      const mount = f.mountPoint ? `${f.mountPoint.selector} の子要素 ${f.mountPoint.children} 個` : 'マウント先なし';
+      log(`  ${f.url.slice(0, 90)}`);
+      log(`      タイトル「${f.title || '（なし）'}」 要素 ${f.elements} 個 / 本文 ${f.textLength} 文字 / HTML ${f.htmlLength} 文字 / ${mount}`);
+    }
+    if (problems.errors.length) {
+      section('JavaScript の例外');
+      for (const e of [...new Set(problems.errors)].slice(0, 8)) log(`  ${e}`);
+    }
+    if (problems.console.length) {
+      section('コンソールのエラー（参考）');
+      for (const e of [...new Set(problems.console)].slice(0, 8)) log(`  ${e}`);
+    }
+    if (problems.failedRequests.length) {
+      section('失敗した通信');
+      for (const r of [...new Set(problems.failedRequests)].slice(0, 8)) log(`  ${r}`);
+    }
+
+    // 画面に出ている文言をいちばんの手がかりにする。
+    // 画像の404などは console にエラーを残すが、描画が止まった原因ではない。
     section('考えられる原因');
+    const mainFrame = frames[0];
+    const framedText = frames.slice(1).some((f) => f.textLength > 0);
     if (/(ログイン|会員登録|サインイン|新規登録|パスワード)/.test(bodyText)) {
       log('  ログイン画面が表示されています。`npm run netsuper:login` をやり直してください。');
     } else if (/(店舗|お届け先|エリア|郵便番号|配達)/.test(bodyText)) {
       log('  店舗またはお届け先の選択を求められています。');
       log('  `npm run netsuper:login` で開いたブラウザで、商品一覧が見えるところまで進めてください。');
+    } else if (framedText) {
+      log('  中身が iframe の中にあります。フレーム内も探しましたが商品は見つかりませんでした。');
+    } else if (problems.errors.length) {
+      log('  JavaScript の例外で描画が止まっています。上の例外の内容を共有してください。');
+    } else if (mainFrame && mainFrame.elements <= 5) {
+      log('  ページ自体がほとんど空です。URL が読み込めていない可能性があります。');
     } else if (!bodyText.trim()) {
-      log('  本文が空です。描画待ちが足りない可能性があります（設定の waitMs を 5000 に）。');
+      log('  要素はあるのに文字が出ていません。描画待ちが足りないか、');
+      log('  ブラウザが自動操作と判定されて中身を出していない可能性があります。');
+      log('  `--wait 15000` を付けて長めに待つと切り分けられます。');
     } else {
       log('  一覧ページではない可能性があります。売場を開いたときのURLか確認してください。');
     }
     log(`\n  画面を目で見るには: npm run netsuper:probe -- --headed --url "${url}"`);
+    log(`  もっと長く待つには: npm run netsuper:probe -- --wait 15000 --url "${url}"`);
     log(`  保存済みの画面   : ${relativeToCwd(dir)}/page.png`);
     process.exitCode = 1;
     return;

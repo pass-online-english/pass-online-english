@@ -16,7 +16,7 @@ import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/comp
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { pageExtract } from './lib/extract.mjs';
-import { isSameDocumentNavigation, openList, extractFromPage } from './lib/browser.mjs';
+import { isSameDocumentNavigation, openList, extractFromPage, describeFrames } from './lib/browser.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -391,12 +391,23 @@ const SPA_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></h
 </script>
 </body></html>`;
 
+/** 売場を iframe に入れているサイトの再現。 */
+const IFRAME_HOST_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>
+<header><p>3,000円以上で送料無料</p></header>
+<iframe src="/inner" width="1000" height="800" style="border:0"></iframe>
+</body></html>`;
+
 /** localhost だけで完結する一時サーバ（外部には接続しない）。 */
 function startFixtureServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
+      const pathname = new URL(req.url, 'http://127.0.0.1').pathname;
+      const body =
+        pathname === '/host' ? IFRAME_HOST_HTML
+        : pathname === '/inner' ? `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>${FIXTURES[0].html}</body></html>`
+        : SPA_HTML;
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(SPA_HTML);
+      res.end(body);
     });
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address();
@@ -481,6 +492,31 @@ async function runBrowserTests() {
           assert.equal(b.items[0].name, '牛乳 900ml', 'ハッシュ遷移後も前の画面が残っています');
         } finally {
           await spa.close();
+        }
+      });
+
+      await asyncTest('売場が iframe の中にあっても取り出せる', async () => {
+        const framed = await browser.newPage();
+        try {
+          await openList(framed, `${fixture.base}host`, { waitMs: 100 });
+          const res = await extractFromPage(framed, {});
+          assert.equal(res.count, 4, `iframe 内の商品が取れていません（${res.count} 件）`);
+          assert.equal(res.items[0].name, '明治 おいしい牛乳 900ml');
+          assert.ok(res.frameUrl && res.frameUrl.endsWith('/inner'), 'どのフレームから取ったか記録されていません');
+        } finally {
+          await framed.close();
+        }
+      });
+
+      await asyncTest('フレームの状態を報告できる（0件の原因切り分け用）', async () => {
+        const framed = await browser.newPage();
+        try {
+          await openList(framed, `${fixture.base}host`, { waitMs: 100 });
+          const info = await describeFrames(framed);
+          assert.equal(info.length, 2, 'iframe が数えられていません');
+          assert.ok(info[1].textLength > 0, 'iframe 内の本文が読めていません');
+        } finally {
+          await framed.close();
         }
       });
 
