@@ -45,7 +45,10 @@ export async function openBrowser({ headed = false } = {}) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try {
     return await chromium.launchPersistentContext(dir, {
-      headless: !headed,
+      // NETSUPER_HEADLESS=1 は画面のない環境（検証用）で headed を打ち消すための逃げ道
+      headless: process.env.NETSUPER_HEADLESS === '1' ? true : !headed,
+      // Ctrl+C を Playwright に横取りさせない。記録済みの価格を保存してから終わるため
+      handleSIGINT: false,
       // 画面をキャンバスに描くアプリ（Flutter など）は描画機能が無いと起動しない。
       // 画面を出さない実行でもソフトウェア描画で動くようにしておく。
       args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu-sandbox'],
@@ -271,7 +274,9 @@ export async function extractFromPage(page, selectors) {
  * こちらから API を呼ぶのではなく、アプリの通信を横で記録するだけ。
  */
 export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8_000_000 } = {}) {
-  const re = pattern ? new RegExp(pattern, 'i') : /graphql|\/api\//i;
+  // 既定では JSON の応答をすべて記録する。宛先を絞ると、商品が載っている通信を
+  // 取り逃したときに原因が分かりにくい。絞りたい場合だけ pattern を渡す。
+  const re = pattern ? new RegExp(pattern, 'i') : /./;
   const entries = [];
   let bytes = 0;
 

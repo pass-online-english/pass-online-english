@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = {
   waitMs: 1500,
   // 画面を出さないブラウザでは中身を描画しないサイトがあるため、常時表示に切り替えられる
   headed: false,
-  // 商品データが載っている通信を選ぶための正規表現（省略時は graphql / api を含むURL）
+  // 商品データが載っている通信を絞る正規表現（省略時は JSON の応答をすべて見る）
   apiPattern: '',
   categories: [],
   selectors: { item: '', name: '', price: '' },

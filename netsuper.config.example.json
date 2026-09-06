@@ -6,7 +6,7 @@
   "waitMs": 3000,
   "_headed": "true にするとブラウザを表示したまま収集する。画面を出さないと中身を描画しないサイト向け。",
   "headed": false,
-  "_apiPattern": "商品データが載っている通信を選ぶ正規表現。空なら graphql / api を含むURL。",
+  "_apiPattern": "商品データが載っている通信を絞る正規表現。空なら JSON の応答をすべて見る。",
   "apiPattern": "",
   "categories": [
     { "name": "野菜", "url": "https://twidy.jp/#/（野菜の売場を開いたときのURL）" },

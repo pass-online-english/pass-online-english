@@ -128,3 +128,31 @@ export function dedupeProducts(products) {
   }
   return [...byKey.values()];
 }
+
+/**
+ * JSON の「形」だけを書き出す（値は含めない）。
+ *
+ * 商品が取り出せなかったとき、どんな項目名で届いているかを知るために使う。
+ * 住所や氏名などの中身は出さず、キーの並びと型だけを残す。
+ */
+export function describeShape(json, { maxDepth = 6, maxKeys = 40 } = {}) {
+  const lines = [];
+  const walk = (node, prefix, depth) => {
+    if (depth > maxDepth || lines.length > 400) return;
+    if (Array.isArray(node)) {
+      lines.push(`${prefix}[] (${node.length})`);
+      if (node.length) walk(node[0], `${prefix}[]`, depth + 1);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      for (const [k, v] of Object.entries(node).slice(0, maxKeys)) {
+        const path = prefix ? `${prefix}.${k}` : k;
+        if (v === null) lines.push(`${path}: null`);
+        else if (typeof v === 'object') walk(v, path, depth + 1);
+        else lines.push(`${path}: ${typeof v}`);
+      }
+    }
+  };
+  walk(json, '', 0);
+  return lines;
+}

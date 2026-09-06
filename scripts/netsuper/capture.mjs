@@ -9,19 +9,22 @@
  * 横で記録するだけ。アプリから見ればいつもの買い物と同じ動きになるので、
  * 自動操作でつまずく余地がない。
  *
+ * 終わりの合図は「ブラウザを閉じること」。キー入力を待たないので、
+ * 打ち間違いや入力の取りこぼしで途中終了することがない。
+ *
  * 出力は scrape と同じ（reports/netsuper/<収集日>/）なので、
  * そのまま `npm run netsuper:diff` で店頭価格と比べられる。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline/promises';
-import { stdin, stdout } from 'node:process';
+import { stdout } from 'node:process';
 import { parseCliArgs } from '../analytics/lib/args.mjs';
 import { main, log, section, isEntrypoint } from '../analytics/lib/cli.mjs';
 import { toCSV, fmtNum } from '../analytics/lib/output.mjs';
 import { outputRoot, ensureDir, today, relativeToCwd } from './lib/paths.mjs';
 import { loadConfig, configExists } from './lib/config.mjs';
 import { openBrowser, firstPage, attachApiCapture } from './lib/browser.mjs';
+import { describeShape } from './lib/apidata.mjs';
 import { toRows, buildSummary, CSV_COLUMNS } from './scrape.mjs';
 
 const HELP = `
@@ -30,7 +33,7 @@ const HELP = `
   npm run netsuper:capture [-- --url <開始URL>]
 
   ブラウザで売場を順に開いてください（普段の買い物と同じ操作です）。
-  見終わったらターミナルで Enter を押すと、集まった価格を保存します。
+  見終わったらブラウザの窓を閉じると、集まった価格を保存します。
 `;
 
 /** URL のうち、売場を見分ける部分（#/ 以降）。 */
@@ -51,6 +54,22 @@ export function assignCategories(products, categories = []) {
   });
 }
 
+/** ブラウザが閉じられるまで（または Ctrl+C まで）待つ。 */
+function waitUntilClosed(context) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (reason) => {
+      if (done) return;
+      done = true;
+      process.off('SIGINT', onSigint);
+      resolve(reason);
+    };
+    const onSigint = () => finish('interrupt');
+    context.on('close', () => finish('closed'));
+    process.on('SIGINT', onSigint);
+  });
+}
+
 export const run = async () => {
   const values = parseCliArgs({ url: { type: 'string' } });
   if (values.help) { log(HELP); return; }
@@ -64,10 +83,15 @@ export const run = async () => {
   section('価格の記録');
   log('  ブラウザが開きます。いつもどおり売場を見て回ってください。');
   log('  見たい売場を順に開き、下までスクロールすると、その分だけ記録されます。');
-  log('  操作はすべてあなたが行います。ツールは受け取ったデータを記録するだけです。\n');
+  log('  操作はすべてあなたが行います。ツールは受け取ったデータを記録するだけです。');
+  log('');
+  log('  ■ 見終わったら「ブラウザの窓を閉じて」ください。そこで保存します。');
+  log('    （ターミナルでのキー入力は不要です）');
+  log('');
 
   const context = await openBrowser({ headed: true });
   let products = [];
+  let entries = [];
   let timer;
   try {
     const page = await firstPage(context);
@@ -77,31 +101,48 @@ export const run = async () => {
     // 記録できている実感がないと不安なので、件数を出し続ける
     timer = setInterval(() => {
       const n = capture.products(0).length;
-      stdout.write(`\r  記録中… 商品 ${String(n).padStart(4)} 件 / 通信 ${String(capture.entries.length).padStart(4)} 件   `);
-    }, 2000);
+      stdout.write(`  記録中… 商品 ${String(n).padStart(4)} 件 / 通信 ${String(capture.entries.length).padStart(4)} 件\n`);
+    }, 5000);
 
-    const rl = readline.createInterface({ input: stdin, output: stdout });
-    await rl.question('\n  見終わったら Enter を押してください… ');
-    rl.close();
+    await waitUntilClosed(context);
     clearInterval(timer);
     products = capture.products(0);
+    entries = capture.entries;
   } finally {
     clearInterval(timer);
-    await context.close();
+    await context.close().catch(() => {});
   }
 
+  const collectedAt = today();
+  const dir = ensureDir(values.out ? path.resolve(values.out) : path.join(outputRoot(), collectedAt));
+
   if (!products.length) {
+    // 何が届いていたのかを残す。値は書かず、項目名と型だけ（住所や氏名を残さないため）
+    fs.writeFileSync(
+      path.join(dir, 'api-endpoints.txt'),
+      entries.map((e) => `${e.status} ${e.url}`).join('\n') || '(通信なし)',
+      'utf8'
+    );
+    const shapes = entries
+      .slice(-20)
+      .map((e) => `── ${e.url}\n${describeShape(e.json).join('\n')}`)
+      .join('\n\n');
+    fs.writeFileSync(path.join(dir, 'api-shapes.txt'), shapes || '(記録なし)', 'utf8');
+
     section('商品が記録できませんでした');
-    log('  売場を開いてスクロールしましたか？');
-    log('  それでも0件なら、データの届き方が想定と違う可能性があります。');
-    log('  `npm run netsuper:probe -- --headed` の出力を共有してください。');
+    log(`  記録した通信: ${entries.length} 件`);
+    log('  売場を開いて、下までスクロールしましたか？');
+    log('  商品が画面に出る前に閉じると、まだデータが届いていません。');
+    log('');
+    log('  届いていたデータの形を保存しました（中身の値は含みません）:');
+    log(`    ${relativeToCwd(path.join(dir, 'api-shapes.txt'))}`);
+    log(`    ${relativeToCwd(path.join(dir, 'api-endpoints.txt'))}`);
+    log('  この2つを共有してもらえれば、読み取り方を合わせられます。');
     process.exitCode = 1;
     return;
   }
 
-  const collectedAt = today();
   const rows = toRows(assignCategories(products, cfg?.categories ?? []), { collectedAt });
-  const dir = ensureDir(values.out ? path.resolve(values.out) : path.join(outputRoot(), collectedAt));
   fs.writeFileSync(path.join(dir, 'items.csv'), toCSV(rows, CSV_COLUMNS), 'utf8');
   fs.writeFileSync(
     path.join(dir, 'items.json'),
@@ -118,7 +159,8 @@ export const run = async () => {
   log(`  商品 ${fmtNum(rows.length)} 件を保存しました: ${relativeToCwd(dir)}/`);
   log('    items.csv   … 表計算で開く用');
   log('    summary.md  … カテゴリ別の概要');
-  log('\n  次: `npm run netsuper:diff`（店頭価格メモ・前回との比較）');
+  log('');
+  log('  次: `npm run netsuper:diff`（店頭価格メモ・前回との比較）');
 };
 
 if (isEntrypoint(import.meta.url)) main(run);
