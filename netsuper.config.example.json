@@ -1,0 +1,26 @@
+{
+  "_メモ": "netsuper.config.json にコピーして使う。URL はネットスーパーで売場を開いたときのアドレスバーの値をそのまま貼る。",
+  "store": "文化堂 豊洲店（ツイディ）",
+  "entryUrl": "https://（ログインページ、または売場トップのURL）",
+  "waitMs": 1500,
+  "categories": [
+    { "name": "野菜", "url": "https://（野菜カテゴリのURL）" },
+    { "name": "精肉", "url": "https://（精肉カテゴリのURL）" },
+    { "name": "鮮魚", "url": "https://（鮮魚カテゴリのURL）" },
+    { "name": "乳製品・卵", "url": "https://（乳製品カテゴリのURL）" },
+    { "name": "パン", "url": "https://（パンカテゴリのURL）", "disabled": true }
+  ],
+  "_selectors": "空のままでよい。probe が自動判定する。安定させたいときだけ `npm run netsuper:probe -- --save` で埋める。",
+  "selectors": {
+    "item": "",
+    "name": "",
+    "price": ""
+  },
+  "_pagination": "scroll=無限スクロール / next=「次へ」ボタン / query=?page=N / none=1ページのみ",
+  "pagination": {
+    "mode": "scroll",
+    "nextSelector": "",
+    "queryParam": "page",
+    "maxPages": 20
+  }
+}

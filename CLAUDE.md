@@ -9,13 +9,16 @@ Passオンライン英語（英検対策中心のオンライン英語レッス�
 ```
 site/                 本番にアップロードするファイル一式（サイトの実体）
 scripts/analytics/    GA4 / Search Console 分析ツール（読み取り専用）
+scripts/netsuper/     ネットスーパーの価格収集ツール（サイトとは無関係）
 docs/DEPLOY.md        サイトの管理とデプロイ手順
 docs/ANALYTICS.md     分析ツールの使い方
+docs/NETSUPER.md      ネットスーパー価格収集ツールの使い方
 data/keyword-planner/ キーワードプランナーのCSV（検索ボリューム）
-reports/              分析結果の出力先（.gitignore 済み）
+data/netsuper/        店頭価格メモ（store-prices.csv）
+reports/              分析結果・収集結果の出力先（.gitignore 済み）
 ```
 
-`package.json` は分析ツール専用であり、公開されるサイトの動作には関与しない。
+`package.json` はツール類（分析・価格収集）専用であり、公開されるサイトの動作には関与しない。
 
 ## サイトを編集するとき
 
@@ -53,6 +56,26 @@ reports/              分析結果の出力先（.gitignore 済み）
 
 詳細は `docs/ANALYTICS.md`。
 
+## ネットスーパーの価格を頼まれたとき
+
+`docs/NETSUPER.md` を読む。サイトとは無関係のツールで、`npm run netsuper:*` から動く。
+
+| 依頼内容 | 使うコマンド |
+|---|---|
+| 価格を集める | `npm run netsuper:scrape` |
+| 店頭価格・前回と比べる | `npm run netsuper:diff` |
+| 取り出せるか試す・セレクタを調べる | `npm run netsuper:probe` |
+| ログインし直す | `npm run netsuper:login` |
+
+- **ログイン情報は扱わない。** ログインは利用者が手でやる。スクリプトが保存するのは
+  ログイン後のセッションだけで、置き場所はリポジトリ外（`~/.config/pass-netsuper/`）
+- **価格は表示価格そのまま。** 送料・手数料・ポイントは含まない。
+  税込/税抜の判定が曖昧な行は `priceKind` と `priceRaw` を確認してから述べる
+- **店頭価格との突き合わせは商品名の類似度。** 一致度が低い行は比較していない。
+  同じ商品名でも内容量が違えば価格差は当然生じる
+- 収集がうまくいかないときは `npm run netsuper:probe` の出力
+  （`reports/netsuper/probe-…/page.html`）を見てセレクタを詰める
+
 ## 分析するときの原則
 
 - **原因を断定しない。** API から確認できるのは数値だけ。
@@ -79,6 +102,9 @@ reports/              分析結果の出力先（.gitignore 済み）
 - API に必要な ID（`GA4_PROPERTY_ID`、`SEARCH_CONSOLE_SITE_URL`）を**推測して設定する**。
   不明なら利用者に確認する。
 - `site/` の HTML ファイル名を変更する。
+- ネットスーパーの**ログインID / パスワードをスクリプトやファイルに書く**。
+  ログインは利用者が手で行う（`npm run netsuper:login`）。
+- ネットスーパーのセッションファイル・`netsuper.config.json` を**コミットする**。
 
 ## 既知の状態
 
@@ -111,7 +137,12 @@ reports/              分析結果の出力先（.gitignore 済み）
 
 ```bash
 npm run analytics:selftest
+npm run netsuper:selftest
 ```
 
-期間計算・URL 正規化・SEO 候補抽出・GA4×GSC 突き合わせ・レポート生成を
-合成データで検証する。API 接続は不要。
+`analytics:selftest` は期間計算・URL 正規化・SEO 候補抽出・GA4×GSC 突き合わせ・
+レポート生成を合成データで検証する。API 接続は不要。
+
+`netsuper:selftest` は価格の解釈・商品名の突き合わせ・差分判定に加え、
+商品カードの自動判定を合成 HTML で検証する。ネットスーパーには接続しない
+（Chromium が無い環境ではブラウザ部分だけスキップされる）。

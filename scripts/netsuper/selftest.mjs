@@ -1,0 +1,448 @@
+#!/usr/bin/env node
+/**
+ * 抽出・比較ロジックの自己テスト。ネットスーパーには接続しない。
+ *
+ *   npm run netsuper:selftest
+ *
+ * 価格の解釈・商品名の突き合わせ・差分判定を合成データで検証し、
+ * 商品カードの自動判定は合成 HTML をブラウザに読ませて検証する。
+ * Chromium が無い環境ではブラウザ部分だけスキップする。
+ */
+import assert from 'node:assert/strict';
+import { extractPrices, pickPrice, extractUnit, nameKey, similarity, bestMatch } from './lib/price.mjs';
+import { parseCSV, parseStorePrices, toNumber } from './lib/csv.mjs';
+import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
+import { toRows, buildSummary } from './scrape.mjs';
+import { buildDiffMarkdown } from './diff.mjs';
+import { pageExtract } from './lib/extract.mjs';
+
+let passed = 0;
+let failed = 0;
+
+function test(name, fn) {
+  try {
+    const r = fn();
+    if (r instanceof Promise) throw new Error('test() は同期関数のみ。非同期は asyncTest を使ってください。');
+    passed += 1;
+    console.log(`  ✅ ${name}`);
+  } catch (err) {
+    failed += 1;
+    console.log(`  ❌ ${name}`);
+    console.log(`     ${err.message}`);
+  }
+}
+
+async function asyncTest(name, fn) {
+  try {
+    await fn();
+    passed += 1;
+    console.log(`  ✅ ${name}`);
+  } catch (err) {
+    failed += 1;
+    console.log(`  ❌ ${name}`);
+    console.log(`     ${err.message}`);
+  }
+}
+
+console.log('\n── 価格の解釈 ────────────────────────────────');
+
+test('「298円」を読める', () => {
+  assert.equal(pickPrice('298円').price, 298);
+});
+
+test('カンマ区切りと ¥ 表記を読める', () => {
+  assert.equal(pickPrice('¥1,280').price, 1280);
+  assert.equal(pickPrice('1,280円').price, 1280);
+});
+
+test('全角の価格を読める', () => {
+  assert.equal(pickPrice('１，２８０円').price, 1280);
+});
+
+test('税抜と税込が並ぶときは税込を採る', () => {
+  const r = pickPrice('本体298円 (税込321円)');
+  assert.equal(r.price, 321);
+  assert.equal(r.priceKind, 'tax_included');
+});
+
+test('「税込」表記がなければ大きいほうを採り、候補を残す', () => {
+  const r = pickPrice('298円 321円');
+  assert.equal(r.price, 321);
+  assert.equal(r.priceKind, 'max_of_multiple');
+  assert.deepEqual(r.candidates, [298, 321]);
+});
+
+test('単位あたり価格は本体価格より優先しない', () => {
+  const r = pickPrice('980円 100gあたり 245円');
+  assert.equal(r.price, 980);
+});
+
+test('価格が無ければ null（0円と混同しない）', () => {
+  const r = pickPrice('売り切れ');
+  assert.equal(r.price, null);
+  assert.equal(r.priceKind, 'unknown');
+});
+
+test('日付や個数を価格と誤認しない', () => {
+  assert.equal(pickPrice('2026年9月6日 3個入').price, null);
+});
+
+test('内容量を拾える', () => {
+  assert.equal(extractUnit('国産牛こま切れ 300g 598円'), '300g');
+  assert.equal(extractUnit('たまご 10個入'), '10個入');
+  assert.equal(extractUnit('名前だけ'), '');
+});
+
+test('extractPrices は税抜表記を区別する', () => {
+  const [a, b] = extractPrices('本体 298円 税込 321円');
+  assert.equal(a.taxExcluded, true);
+  assert.equal(b.taxIncluded, true);
+});
+
+console.log('\n── 商品名の突き合わせ ────────────────────────');
+
+test('全角・記号・空白の違いを吸収する', () => {
+  assert.equal(nameKey('キッコーマン　特選（丸大豆）しょうゆ'), nameKey('ｷｯｺｰﾏﾝ特選 丸大豆 しょうゆ'));
+});
+
+test('完全一致が最優先', () => {
+  const m = bestMatch('牛乳', [{ name: '牛乳', price: 200 }, { name: '低脂肪牛乳', price: 180 }]);
+  assert.equal(m.item.price, 200);
+  assert.equal(m.score, 1);
+});
+
+test('表記ゆれでも近いものを拾う', () => {
+  const m = bestMatch('明治おいしい牛乳 900ml', [{ name: '明治 おいしい牛乳 900ml', price: 278 }]);
+  assert.ok(m && m.score >= 0.6);
+});
+
+test('無関係な商品には一致させない', () => {
+  const m = bestMatch('トイレットペーパー', [{ name: '国産豚バラ肉', price: 398 }]);
+  assert.equal(m, null);
+});
+
+test('類似度は 0〜1 に収まる', () => {
+  assert.ok(similarity('牛乳', '牛乳') === 1);
+  assert.ok(similarity('牛乳', 'トマト') < 0.3);
+});
+
+console.log('\n── 店頭価格メモの読み込み ────────────────────');
+
+test('BOM・引用符・CRLF を含む CSV を読める', () => {
+  const csv = '﻿商品名,店頭価格,メモ\r\n"牛乳, 1L",198,毎週\r\nたまご,258,\r\n';
+  const { items, errors } = parseStorePrices(csv);
+  assert.equal(errors.length, 0);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].name, '牛乳, 1L');
+  assert.equal(items[0].storePrice, 198);
+  assert.equal(items[0].note, '毎週');
+});
+
+test('英語の列名でも読める', () => {
+  const { items } = parseStorePrices('name,price\nmilk,198\n');
+  assert.equal(items[0].storePrice, 198);
+});
+
+test('「198円」のような表記も数値として読む', () => {
+  assert.equal(toNumber('１９８円'), 198);
+  assert.equal(toNumber('1,280'), 1280);
+  assert.equal(toNumber(''), null);
+});
+
+test('価格を読めない行はエラーとして報告し、他の行は残す', () => {
+  const { items, errors } = parseStorePrices('商品名,店頭価格\n牛乳,やすい\nたまご,258\n');
+  assert.equal(items.length, 1);
+  assert.equal(errors.length, 1);
+});
+
+test('空の CSV でも落ちない', () => {
+  assert.deepEqual(parseCSV(''), []);
+  assert.deepEqual(parseStorePrices('').items, []);
+});
+
+console.log('\n── 店頭価格との比較 ──────────────────────────');
+
+const NET = [
+  { name: '牛乳 1000ml', price: 205, soldOut: false, category: '乳製品', url: 'https://x/1' },
+  { name: 'たまご 10個入', price: 320, soldOut: false, category: '卵', url: 'https://x/2' },
+  { name: '国産豚バラ肉 300g', price: 498, soldOut: false, category: '精肉', url: 'https://x/3' },
+  { name: '食パン 6枚', price: 158, soldOut: true, category: 'パン', url: 'https://x/4' },
+];
+const STORE = [
+  { name: '牛乳 1000ml', storePrice: 198, note: '' },
+  { name: 'たまご 10個入', storePrice: 258, note: '' },
+  { name: '国産豚バラ肉 300g', storePrice: 480, note: '' },
+  { name: '食パン 6枚', storePrice: 150, note: '' },
+  { name: 'ヨーグルト', storePrice: 128, note: '' },
+];
+
+test('差が小さいものは「ほぼ同じ」', () => {
+  const r = compareToStore(STORE, NET);
+  const milk = r.find((x) => x.name === '牛乳 1000ml');
+  assert.equal(milk.verdict, VERDICT.SAME);
+  assert.equal(milk.diff, 7);
+});
+
+test('差が大きいものは「ネットが高い」', () => {
+  const r = compareToStore(STORE, NET);
+  assert.equal(r.find((x) => x.name === 'たまご 10個入').verdict, VERDICT.PRICIER);
+});
+
+test('円と％のゆるいほうで判定する（18円差は 20円以内なので同じ扱い）', () => {
+  const r = compareToStore(STORE, NET, { tolerancePct: 0.01, toleranceYen: 20 });
+  assert.equal(r.find((x) => x.name === '国産豚バラ肉 300g').verdict, VERDICT.SAME);
+});
+
+test('売り切れは買い物リストに入れない', () => {
+  const r = compareToStore(STORE, NET);
+  assert.equal(r.find((x) => x.name === '食パン 6枚').verdict, VERDICT.SOLD_OUT);
+  assert.ok(!buyOnline(r).some((x) => x.name === '食パン 6枚'));
+});
+
+test('ネット側に無い商品は「見つからず」', () => {
+  const r = compareToStore(STORE, NET);
+  const y = r.find((x) => x.name === 'ヨーグルト');
+  assert.equal(y.verdict, VERDICT.NO_MATCH);
+  assert.equal(y.netPrice, null);
+});
+
+test('価格が取れていない商品とは突き合わせない', () => {
+  const r = compareToStore([{ name: 'なぞ商品', storePrice: 100 }], [{ name: 'なぞ商品', price: null }]);
+  assert.equal(r[0].verdict, VERDICT.NO_MATCH);
+});
+
+test('買い物リストは差額の小さい（得な）順', () => {
+  const r = compareToStore(
+    [{ name: 'A', storePrice: 200 }, { name: 'B', storePrice: 200 }],
+    [{ name: 'A', price: 205, soldOut: false }, { name: 'B', price: 180, soldOut: false }]
+  );
+  assert.deepEqual(buyOnline(r).map((x) => x.name), ['B', 'A']);
+});
+
+console.log('\n── 前回との比較 ──────────────────────────────');
+
+test('値上がり・値下がり・新登場・消えたを分類する', () => {
+  const prev = [
+    { name: '牛乳', price: 198, url: 'https://x/1' },
+    { name: 'たまご', price: 258, url: 'https://x/2' },
+    { name: '消えた商品', price: 100, url: 'https://x/9' },
+  ];
+  const curr = [
+    { name: '牛乳', price: 188, url: 'https://x/1' },
+    { name: 'たまご', price: 298, url: 'https://x/2' },
+    { name: '新商品', price: 150, url: 'https://x/8' },
+  ];
+  const d = compareSnapshots(prev, curr);
+  assert.equal(d.changed.length, 2);
+  assert.equal(d.changed[0].name, '牛乳');
+  assert.equal(d.changed[0].diff, -10);
+  assert.equal(d.added.length, 1);
+  assert.equal(d.removed.length, 1);
+});
+
+test('URL が無くても商品名で同一判定できる', () => {
+  const d = compareSnapshots([{ name: '牛乳 1L', price: 198 }], [{ name: '牛乳　1L', price: 208 }]);
+  assert.equal(d.changed.length, 1);
+  assert.equal(d.added.length, 0);
+});
+
+test('価格が同じなら変化なし', () => {
+  const d = compareSnapshots([{ name: 'A', price: 100 }], [{ name: 'A', price: 100 }]);
+  assert.equal(d.changed.length, 0);
+});
+
+console.log('\n── 行の組み立てと出力 ────────────────────────');
+
+test('抽出結果を価格つきの行に変換する', () => {
+  const rows = toRows(
+    [{ name: ' 牛乳　1000ml ', priceText: '本体 189円 (税込 205円)', rawText: '牛乳 1000ml 205円', category: '乳製品', url: 'https://x/1', soldOut: false }],
+    { collectedAt: '2026-09-06' }
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, '牛乳 1000ml');
+  assert.equal(rows[0].price, 205);
+  assert.equal(rows[0].priceKind, 'tax_included');
+  assert.equal(rows[0].collectedAt, '2026-09-06');
+});
+
+test('同じ商品が重複しても1行にまとまる', () => {
+  const item = { name: '牛乳', priceText: '198円', rawText: '牛乳 198円', url: 'https://x/1' };
+  assert.equal(toRows([item, { ...item }]).length, 1);
+});
+
+test('名前も価格も取れない行は捨てる', () => {
+  assert.equal(toRows([{ name: '', priceText: '', rawText: '' }]).length, 0);
+});
+
+test('サマリは0件でも生成できる', () => {
+  const md = buildSummary([], { store: 'テスト店', collectedAt: '2026-09-06', categories: 0 });
+  assert.ok(md.includes('# ネットスーパー価格'));
+});
+
+test('差分レポートは店頭価格メモが無くても生成できる', () => {
+  const md = buildDiffMarkdown({
+    current: { date: '2026-09-06', store: 'テスト店', items: [] },
+    previous: null,
+    storeResults: null,
+    snapshotDiff: null,
+    tolerancePct: 0.1,
+    toleranceYen: 20,
+    top: 10,
+  });
+  assert.ok(md.includes('店頭価格メモがありません'));
+});
+
+test('差分レポートに買い物リストが載る', () => {
+  const md = buildDiffMarkdown({
+    current: { date: '2026-09-06', store: 'テスト店', items: NET },
+    previous: { date: '2026-08-30', items: NET },
+    storeResults: compareToStore(STORE, NET),
+    snapshotDiff: compareSnapshots(NET, NET),
+    tolerancePct: 0.1,
+    toleranceYen: 20,
+    top: 10,
+  });
+  assert.ok(md.includes('牛乳 1000ml'));
+  assert.ok(md.includes('前回（2026-08-30）からの変化'));
+});
+
+// ── ブラウザでの商品カード自動判定 ──────────────────
+const FIXTURES = [
+  {
+    name: 'よくあるカード型グリッド',
+    html: `<div class="list">
+      ${[
+        ['明治 おいしい牛乳 900ml', '235円'],
+        ['たまご Mサイズ 10個入', '268円'],
+        ['国産豚バラ肉 300g', '498円'],
+        ['トマト 1袋', '198円'],
+      ].map(([n, p], i) => `
+        <div class="item-card">
+          <a href="/item/${i}"><img src="https://example.test/${i}.jpg" alt="${n}"></a>
+          <div class="item-card__body">
+            <a class="item-name" href="/item/${i}">${n}</a>
+            <div class="item-price"><span class="num">${p}</span></div>
+            <button type="button">カートに入れる</button>
+          </div>
+        </div>`).join('')}
+    </div>`,
+    expect: { count: 4, first: { name: '明治 おいしい牛乳 900ml', price: 235 } },
+  },
+  {
+    name: '価格が複数タグに割れているカード',
+    html: `<ul class="goods">
+      ${[
+        ['サントリー天然水 2L', '108', '116'],
+        ['食パン 6枚切', '148', '159'],
+        ['納豆 3P', '98', '105'],
+      ].map(([n, honta, zeikomi], i) => `
+        <li class="goods__item">
+          <p class="goods__name">${n}</p>
+          <p class="goods__price">本体 <span>${honta}</span>円（税込 <span>${zeikomi}</span>円）</p>
+        </li>`).join('')}
+    </ul>`,
+    expect: { count: 3, first: { name: 'サントリー天然水 2L', price: 116 } },
+  },
+  {
+    name: 'テーブル型の一覧（売り切れ表示つき）',
+    html: `<table><tbody>
+      <tr class="row"><td class="nm">きゅうり 3本</td><td class="pr">158円</td><td>　</td></tr>
+      <tr class="row"><td class="nm">にんじん 1袋</td><td class="pr">198円</td><td>売り切れ</td></tr>
+      <tr class="row"><td class="nm">じゃがいも 1kg</td><td class="pr">298円</td><td>　</td></tr>
+      <tr class="row"><td class="nm">玉ねぎ 3個</td><td class="pr">248円</td><td>　</td></tr>
+    </tbody></table>`,
+    expect: { count: 4, first: { name: 'きゅうり 3本', price: 158 }, soldOutName: 'にんじん 1袋' },
+  },
+  {
+    name: 'ヘッダ・フッタなど商品以外の価格表示が混ざるページ',
+    html: `<header><p>3,000円以上のお買い上げで送料無料</p></header>
+    <div class="list">
+      ${[['豆腐 300g', '78円'], ['ちくわ 5本', '118円'], ['もやし', '38円']]
+        .map(([n, p], i) => `<article class="p-card"><h3 class="p-card__ttl">${n}</h3><p class="p-card__price">${p}</p></article>`)
+        .join('')}
+    </div>
+    <footer><p>年会費 0円</p></footer>`,
+    expect: { count: 3, first: { name: '豆腐 300g', price: 78 } },
+  },
+];
+
+async function runBrowserTests() {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    console.log('  ⏭  playwright が未インストールのためスキップ（npm install で入ります）');
+    return;
+  }
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: process.env.NETSUPER_CHROMIUM_PATH || undefined,
+    });
+  } catch (err) {
+    console.log('  ⏭  Chromium を起動できないためスキップ');
+    console.log(`     ${String(err.message).split('\n')[0]}`);
+    console.log('     `npx playwright install chromium` で導入できます。');
+    return;
+  }
+
+  try {
+    const page = await browser.newPage();
+    for (const f of FIXTURES) {
+      await asyncTest(f.name, async () => {
+        await page.setContent(`<!doctype html><html lang="ja"><body>${f.html}</body></html>`);
+        const res = await page.evaluate(pageExtract, { selectors: {} });
+        assert.equal(res.mode, 'auto', `判定モードが auto ではありません（${res.mode}）`);
+        assert.equal(res.count, f.expect.count, `件数が違います（${res.count} 件）`);
+        const first = res.items[0];
+        assert.equal(first.name, f.expect.first.name, `商品名が違います（${first.name}）`);
+        assert.equal(
+          pickPrice(first.priceText || first.rawText).price,
+          f.expect.first.price,
+          `価格が違います（${first.priceText}）`
+        );
+        if (f.expect.soldOutName) {
+          const so = res.items.find((i) => i.name === f.expect.soldOutName);
+          assert.ok(so && so.soldOut, '売り切れを検出できていません');
+          assert.ok(res.items.filter((i) => i.soldOut).length === 1, '売り切れの誤検出があります');
+        }
+      });
+    }
+
+    await asyncTest('セレクタを設定すればそちらが使われる', async () => {
+      await page.setContent(`<!doctype html><html lang="ja"><body>${FIXTURES[0].html}</body></html>`);
+      const res = await page.evaluate(pageExtract, {
+        selectors: { item: '.item-card', name: '.item-name', price: '.item-price' },
+      });
+      assert.equal(res.mode, 'configured');
+      assert.equal(res.count, 4);
+      assert.equal(res.items[0].name, '明治 おいしい牛乳 900ml');
+    });
+
+    await asyncTest('商品が無いページでは failed を返す（0件を捏造しない）', async () => {
+      await page.setContent('<!doctype html><html lang="ja"><body><p>ログインしてください</p></body></html>');
+      const res = await page.evaluate(pageExtract, { selectors: {} });
+      assert.equal(res.mode, 'failed');
+      assert.equal(res.count, 0);
+    });
+
+    await asyncTest('自動判定したセレクタで同じ件数を取り直せる', async () => {
+      await page.setContent(`<!doctype html><html lang="ja"><body>${FIXTURES[0].html}</body></html>`);
+      const auto = await page.evaluate(pageExtract, { selectors: {} });
+      assert.ok(auto.selectors.item, 'セレクタを作れませんでした');
+      const again = await page.evaluate(pageExtract, { selectors: { item: auto.selectors.item } });
+      assert.equal(again.count, auto.count);
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
+console.log('\n── 商品カードの自動判定（合成HTML） ──────────');
+await runBrowserTests();
+
+console.log(`\n${'─'.repeat(46)}`);
+console.log(`  成功 ${passed} / 失敗 ${failed}`);
+console.log(`${'─'.repeat(46)}\n`);
+if (failed > 0) process.exitCode = 1;

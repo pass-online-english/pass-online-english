@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Passオンライン英語 — GA4 / Google Search Console 分析ツール（読み取り専用）。静的サイト本体の動作には影響しません。",
+  "description": "Passオンライン英語 — GA4 / Google Search Console 分析ツール（読み取り専用）とネットスーパー価格収集ツール。静的サイト本体の動作には影響しません。",
   "engines": {
     "node": ">=20"
   },
@@ -17,10 +17,18 @@
     "analytics:insights": "node scripts/analytics/insights.mjs",
     "analytics:keywords": "node scripts/analytics/keywords.mjs",
     "analytics:report": "node scripts/analytics/report.mjs",
-    "analytics:selftest": "node scripts/analytics/selftest.mjs"
+    "analytics:selftest": "node scripts/analytics/selftest.mjs",
+    "netsuper:login": "node scripts/netsuper/login.mjs",
+    "netsuper:probe": "node scripts/netsuper/probe.mjs",
+    "netsuper:scrape": "node scripts/netsuper/scrape.mjs",
+    "netsuper:diff": "node scripts/netsuper/diff.mjs",
+    "netsuper:selftest": "node scripts/netsuper/selftest.mjs"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
     "googleapis": "^176.0.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

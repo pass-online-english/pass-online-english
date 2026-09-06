@@ -10,13 +10,15 @@
 ```
 site/                 本番にアップロードするファイル一式（サイトの実体）
 scripts/analytics/    GA4 / Search Console 分析ツール（読み取り専用）
+scripts/netsuper/     ネットスーパーの価格収集ツール（サイトとは無関係）
 docs/
   DEPLOY.md           サイトの管理とデプロイ手順
   ANALYTICS.md        分析ツールのセットアップと使い方
-reports/              分析結果の出力先（Git 管理外）
+  NETSUPER.md         ネットスーパー価格収集ツールの使い方
+reports/              分析結果・収集結果の出力先（Git 管理外）
 ```
 
-`package.json` は分析ツール専用です。公開されるサイトの動作には関与しません。
+`package.json` はツール類（分析・価格収集）専用です。公開されるサイトの動作には関与しません。
 
 ## サイトを更新する
 
