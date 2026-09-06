@@ -131,7 +131,7 @@ export const run = async () => {
 
   section(`収集開始（${categories.length} カテゴリ）`);
   const collectedAt = today();
-  const context = await openBrowser({ headed: Boolean(values.headed) });
+  const context = await openBrowser({ headed: Boolean(values.headed || cfg.headed) });
   const raw = [];
   const failures = [];
   try {

@@ -4,6 +4,8 @@
   "entryUrl": "https://twidy.jp/#/login",
   "_waitMs": "描画を待つミリ秒。#/ で画面が切り替わる SPA は 3000 くらいが安全。",
   "waitMs": 3000,
+  "_headed": "true にするとブラウザを表示したまま収集する。画面を出さないと中身を描画しないサイト向け。",
+  "headed": false,
   "categories": [
     { "name": "野菜", "url": "https://twidy.jp/#/（野菜の売場を開いたときのURL）" },
     { "name": "精肉", "url": "https://twidy.jp/#/（精肉の売場を開いたときのURL）" },

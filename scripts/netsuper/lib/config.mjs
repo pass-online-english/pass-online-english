@@ -14,6 +14,8 @@ export const DEFAULT_CONFIG = {
   store: '',
   entryUrl: '',
   waitMs: 1500,
+  // 画面を出さないブラウザでは中身を描画しないサイトがあるため、常時表示に切り替えられる
+  headed: false,
   categories: [],
   selectors: { item: '', name: '', price: '' },
   pagination: { mode: 'scroll', nextSelector: '', queryParam: 'page', maxPages: 20 },

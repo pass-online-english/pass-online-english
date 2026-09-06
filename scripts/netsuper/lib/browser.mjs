@@ -186,7 +186,9 @@ export async function describeFrames(page) {
         elements: document.querySelectorAll('*').length,
         // Vue / React などのマウント先が空のままかどうか
         mountPoint: (() => {
-          const el = document.querySelector('#app, #root, [data-server-rendered], main, body > div');
+          const el = document.querySelector(
+            '#loading, #splash, [class*="loading"], #app, #root, [data-server-rendered], main, body > div'
+          );
           return el ? { selector: el.id ? `#${el.id}` : el.tagName.toLowerCase(), children: el.childElementCount } : null;
         })(),
       }))

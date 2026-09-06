@@ -54,7 +54,7 @@ main(async () => {
   const waitMs = values.wait === undefined ? (cfg?.waitMs ?? 1500) : Number(values.wait);
   if (!Number.isFinite(waitMs) || waitMs < 0) throw new Error('--wait はミリ秒（0以上の数値）で指定してください。');
 
-  const context = await openBrowser({ headed: Boolean(values.headed) });
+  const context = await openBrowser({ headed: Boolean(values.headed || cfg?.headed) });
   let res;
   let dir;
   let bodyText = '';
@@ -62,7 +62,9 @@ main(async () => {
   let frames = [];
   let nav = null;
   // 未捕捉の例外は描画停止の直接原因になる。console のエラー（画像404など）は参考情報。
-  const problems = { errors: [], console: [], failedRequests: [] };
+  const problems = { errors: [], console: [], failedRequests: [], badResponses: [] };
+  // アプリがサーバに何を聞いて何を返されたか。読み込み中で止まる原因はここに出る
+  const api = [];
   try {
     const page = await firstPage(context);
     // 描画されない原因は JS エラーか通信の失敗であることが多いので拾っておく
@@ -72,6 +74,11 @@ main(async () => {
     });
     page.on('requestfailed', (req) => {
       problems.failedRequests.push(`${req.failure()?.errorText ?? 'failed'} ${req.url().slice(0, 120)}`);
+    });
+    page.on('response', (res) => {
+      const type = res.request().resourceType();
+      if (type === 'xhr' || type === 'fetch') api.push(`${res.status()} ${res.request().method()} ${res.url().slice(0, 110)}`);
+      else if (res.status() >= 400) problems.badResponses.push(`${res.status()} ${res.url().slice(0, 110)}`);
     });
 
     nav = await openList(page, url, { waitMs });
@@ -88,7 +95,7 @@ main(async () => {
     await page.screenshot({ path: path.join(dir, 'page.png'), fullPage: false }).catch(() => {});
     fs.writeFileSync(
       path.join(dir, 'extract.json'),
-      `${JSON.stringify({ url, finalUrl, frames, problems, result: res }, null, 2)}\n`,
+      `${JSON.stringify({ url, finalUrl, navigation: nav, frames, api, problems, result: res }, null, 2)}\n`,
       'utf8'
     );
   } finally {
@@ -128,6 +135,16 @@ main(async () => {
       section('失敗した通信');
       for (const r of [...new Set(problems.failedRequests)].slice(0, 8)) log(`  ${r}`);
     }
+    if (problems.badResponses.length) {
+      section('エラーを返した通信');
+      for (const r of [...new Set(problems.badResponses)].slice(0, 8)) log(`  ${r}`);
+    }
+    section('アプリがサーバに聞いた内容');
+    if (!api.length) {
+      log('  1件もありません。アプリがサーバに問い合わせる前の段階で止まっています。');
+    } else {
+      for (const r of [...new Set(api)].slice(0, 12)) log(`  ${r}`);
+    }
 
     // 画面に出ている文言をいちばんの手がかりにする。
     // 画像の404などは console にエラーを残すが、描画が止まった原因ではない。
@@ -143,6 +160,19 @@ main(async () => {
       log('  中身が iframe の中にあります。フレーム内も探しましたが商品は見つかりませんでした。');
     } else if (problems.errors.length) {
       log('  JavaScript の例外で描画が止まっています。上の例外の内容を共有してください。');
+    } else if (mainFrame?.mountPoint && /loading|spinner|splash/i.test(mainFrame.mountPoint.selector)) {
+      const failed = [...new Set(api)].filter((r) => !/^2\d\d /.test(r));
+      log('  読み込み中の画面のまま止まっています。');
+      if (!api.length) {
+        log('  サーバへの問い合わせが1件もないため、アプリが起動しきっていません。');
+        log('  画面を表示するブラウザなら動く可能性があります（--headed を付けて試す）。');
+      } else if (failed.length) {
+        log('  サーバがエラーを返しています。ログインが切れている可能性があります。');
+        log('  `npm run netsuper:login` をやり直してください。');
+      } else {
+        log('  サーバとのやり取りは成功しているのに描画されていません。');
+        log('  --headed を付けて、画面に何が出ているか確認してください。');
+      }
     } else if (mainFrame && mainFrame.elements <= 5) {
       log('  ページ自体がほとんど空です。URL が読み込めていない可能性があります。');
     } else if (!bodyText.trim()) {
