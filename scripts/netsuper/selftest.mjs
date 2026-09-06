@@ -759,6 +759,76 @@ const GRAPHQL_RESPONSE = {
   },
 };
 
+// twidy（Saleor）の実際の形。商品名は浅く、価格は defaultVariant の下に深く入る。
+const SALEOR_RESPONSE = {
+  data: {
+    twidyProducts: {
+      edges: [
+        {
+          cursor: 'a',
+          node: {
+            id: 'UHJvZHVjdDox',
+            name: 'トマト 1袋',
+            slug: 'tomato',
+            category: { name: '野菜' },
+            thumbnail: { url: 'https://example.test/1.jpg' },
+            defaultVariant: {
+              id: 'variant-1',
+              sku: '0490',
+              name: '1袋',
+              quantityAvailable: 12,
+              pricing: { price: { gross: { amount: 198, currency: 'JPY' }, net: { amount: 183, currency: 'JPY' } } },
+            },
+          },
+        },
+        {
+          cursor: 'b',
+          node: {
+            id: 'UHJvZHVjdDoy',
+            name: 'にんじん 1袋',
+            slug: 'ninjin',
+            category: { name: '野菜' },
+            defaultVariant: {
+              sku: '0491',
+              quantityAvailable: 0,
+              pricing: { price: { gross: { amount: 208 }, net: { amount: 192 } } },
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+test('商品名より深い階層にある価格を拾う（twidy の形）', () => {
+  const products = extractProducts(SALEOR_RESPONSE);
+  assert.equal(products.length, 2, `商品数が違います（${products.length} 件）`);
+  assert.equal(products[0].name, 'トマト 1袋');
+  assert.equal(products[0].price, 198);
+  assert.equal(products[0].priceKind, 'tax_included');
+});
+
+test('税込（gross）を採り、税抜（net）は候補に残す', () => {
+  const [tomato] = extractProducts(SALEOR_RESPONSE);
+  assert.deepEqual(tomato.candidates, [183, 198]);
+});
+
+test('規格（variant）を別の商品として二重に数えない', () => {
+  const products = extractProducts(SALEOR_RESPONSE);
+  assert.ok(!products.some((p) => p.name === '1袋'), '規格が商品として混ざっています');
+});
+
+test('在庫数0を売り切れとして扱う（深い階層でも）', () => {
+  const products = extractProducts(SALEOR_RESPONSE);
+  assert.equal(products[0].soldOut, false);
+  assert.equal(products[1].soldOut, true);
+});
+
+test('売場の名前を商品データから拾う', () => {
+  const products = extractProducts(SALEOR_RESPONSE);
+  assert.equal(products[0].category, '野菜');
+});
+
 test('入れ子の応答から商品を取り出せる', () => {
   const products = extractProducts(GRAPHQL_RESPONSE);
   assert.equal(products.length, 2);

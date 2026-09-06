@@ -50,7 +50,8 @@ export function assignCategories(products, categories = []) {
   return products.map((p) => {
     const route = routeOf(p.sourceUrl);
     const hit = categories.find((c) => route && routeOf(c.url) === route);
-    return { ...p, category: hit ? hit.name : '' };
+    // 商品データ自体が売場を持っていればそちらを使う
+    return { ...p, category: p.category || (hit ? hit.name : '') };
   });
 }
 

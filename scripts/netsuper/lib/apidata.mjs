@@ -13,12 +13,12 @@ import { normalizeText, extractUnit } from './price.mjs';
 const NAME_KEYS =
   /^(name|title|label|商品名|品名|(product|item|goods|display|full|short)_?(name|title))$/i;
 const PRICE_KEYS = /(price|amount|kakaku|価格|値段)/i;
-const TAX_INCLUDED_KEYS = /(tax_?included|include[_]?tax|zeikomi|including_?tax|税込)/i;
-const TAX_EXCLUDED_KEYS = /(tax_?excluded|exclude[_]?tax|without_?tax|body_?price|税抜|本体)/i;
+const TAX_INCLUDED_KEYS = /(tax_?included|include[_]?tax|zeikomi|including_?tax|gross|税込)/i;
+const TAX_EXCLUDED_KEYS = /(tax_?excluded|exclude[_]?tax|without_?tax|body_?price|\bnet\b|税抜|本体)/i;
 const UNIT_KEYS = /(unit|volume|capacity|size|quantity|weight|内容量|規格)$/i;
 const SOLD_OUT_KEYS = /(sold_?out|out_?of_?stock|品切|売切)/i;
 const IN_STOCK_KEYS = /(in_?stock|is_?available|purchasable|orderable)/i;
-const STOCK_COUNT_KEYS = /(stock|inventory|zaiko)/i;
+const STOCK_COUNT_KEYS = /(stock|inventory|zaiko|quantity_?available)/i;
 const URL_LIKE = /^(https?:|data:|\/\/)/i;
 
 const MAX_PRICE = 1_000_000;
@@ -59,6 +59,33 @@ function plausiblePrice(n) {
   return typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= MAX_PRICE;
 }
 
+/**
+ * 商品の下の階層にある価格を探す。
+ *
+ * 商品名は浅い階層、価格は深い階層、という作りが多い。例えば
+ *   node.name
+ *   node.defaultVariant.pricing.price.gross.amount
+ * のように離れている。名前の見つかったオブジェクトから下だけを見るので、
+ * 隣の商品の価格を拾うことはない（配列には降りない）。
+ */
+function scanNested(obj, depth = 0, path = '', acc = { prices: [], soldOut: false, unit: '' }) {
+  if (depth > 4 || acc.prices.length > 20) return acc;
+  for (const [key, value] of Object.entries(obj)) {
+    const here = path ? `${path}.${key}` : key;
+    if (PRICE_KEYS.test(key)) {
+      const n = toAmount(value);
+      if (plausiblePrice(n)) acc.prices.push({ key: here, value: n });
+    }
+    if (SOLD_OUT_KEYS.test(key) && value === true) acc.soldOut = true;
+    if (IN_STOCK_KEYS.test(key) && value === false) acc.soldOut = true;
+    if (STOCK_COUNT_KEYS.test(key) && typeof value === 'number' && value <= 0) acc.soldOut = true;
+    if (!acc.unit && UNIT_KEYS.test(key) && typeof value === 'string') acc.unit = normalizeText(value);
+    // 配列には降りない。隣の商品を巻き込まないため
+    if (value && typeof value === 'object' && !Array.isArray(value)) scanNested(value, depth + 1, here, acc);
+  }
+  return acc;
+}
+
 /** オブジェクト1つを商品として読めるなら読む。読めなければ null。 */
 function readProduct(obj) {
   let name = '';
@@ -66,6 +93,7 @@ function readProduct(obj) {
   let unit = '';
   let soldOut = false;
   let id = '';
+  let category = '';
 
   for (const [key, value] of Object.entries(obj)) {
     if (!name && NAME_KEYS.test(key) && typeof value === 'string') {
@@ -83,6 +111,11 @@ function readProduct(obj) {
     if (!id && /^(id|sku|code|jan)$/i.test(key) && (typeof value === 'string' || typeof value === 'number')) {
       id = String(value);
     }
+    // 売場の名前は商品データ自体が持っていることがある（そちらのほうが確か）
+    if (!category && /^(category|department|section|売場)$/i.test(key) && value && typeof value === 'object') {
+      const label = value.name ?? value.title;
+      if (typeof label === 'string') category = normalizeText(label);
+    }
   }
   // 商品名と価格が別の階層に分かれている形
   //   { price: 198, product: { name: "トマト" } }
@@ -98,6 +131,13 @@ function readProduct(obj) {
       if (name) break;
     }
   }
+  // 価格・在庫・内容量は、商品名より下の階層にあることが多い
+  if (name) {
+    const nested = scanNested(obj);
+    if (!prices.length) prices.push(...nested.prices);
+    if (nested.soldOut) soldOut = true;
+    if (!unit) unit = nested.unit;
+  }
   if (!name || !prices.length) return null;
 
   // 税込が明示されていればそれを、なければ税抜と明示されていないものを優先する
@@ -110,6 +150,7 @@ function readProduct(obj) {
   return {
     id,
     name,
+    category,
     price,
     priceKind,
     candidates: [...new Set(prices.map((p) => p.value))].sort((a, b) => a - b),
@@ -146,7 +187,13 @@ export function extractProducts(json, { maxNodes = 200_000 } = {}) {
       return;
     }
     const product = readProduct(node);
-    if (product) found.push(product);
+    if (product) {
+      found.push(product);
+      // 商品として読めたら、その下の入れ子（規格・価格の内訳）は同じ商品の一部。
+      // 二重に数えないよう、配列だけを見る（別の商品が並んでいることがあるため）。
+      for (const value of Object.values(node)) if (Array.isArray(value)) walk(value);
+      return;
+    }
     for (const value of Object.values(node)) {
       if (value && typeof value === 'object') walk(value);
       else if (typeof value === 'string') {
@@ -179,10 +226,10 @@ export function dedupeProducts(products) {
  * 商品が取り出せなかったとき、どんな項目名で届いているかを知るために使う。
  * 住所や氏名などの中身は出さず、キーの並びと型だけを残す。
  */
-export function describeShape(json, { maxDepth = 6, maxKeys = 40 } = {}) {
+export function describeShape(json, { maxDepth = 12, maxKeys = 40 } = {}) {
   const lines = [];
   const walk = (node, prefix, depth) => {
-    if (depth > maxDepth || lines.length > 400) return;
+    if (depth > maxDepth || lines.length > 800) return;
     if (Array.isArray(node)) {
       lines.push(`${prefix}[] (${node.length})`);
       if (node.length) walk(node[0], `${prefix}[]`, depth + 1);

@@ -132,8 +132,21 @@ Flutter などで作られたアプリ（twidy がこれ）は、画面全体を
 ログイン状態も操作もアプリに任せる。
 
 JSON の形は店舗ごとに違うのでキー名を決め打ちしない。
-「名前らしき文字列」と「価格らしき数値」を併せ持つオブジェクトを商品とみなし、
-`taxIncludedPrice` のように税込と分かるキーがあればそれを優先する。
+「名前らしき文字列」を持つオブジェクトを商品の候補とし、その**下の階層**から
+価格・在庫・内容量・売場を探す。商品名は浅く、価格は深い、という作りが多いため。
+
+twidy（Saleor）の場合はこうなっている。
+
+```
+node.name                                        商品名
+node.category.name                               売場
+node.defaultVariant.quantityAvailable            在庫数（0 なら売り切れ）
+node.defaultVariant.pricing.price.gross.amount   税込価格
+node.defaultVariant.pricing.price.net.amount     税抜価格
+```
+
+`gross`（税込）や `taxIncludedPrice` のように税込と分かるキーがあればそれを採り、
+税抜は `priceCandidates` に残す。規格（variant）を別の商品として二重に数えない。
 
 対象にする通信は既定で **JSON を返すものすべて**。
 宛先を決め打ちすると、商品が載っている通信を取り逃したときに原因が分かりにくいため。

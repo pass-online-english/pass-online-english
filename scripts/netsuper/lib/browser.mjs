@@ -408,7 +408,7 @@ export async function collectCategory(page, category, config, { onPage, capture 
     const key = `${item.url || ''}|${item.name}|${item.priceText ?? item.price ?? ''}`;
     if (seen.has(key)) return false;
     seen.add(key);
-    all.push({ ...item, category: category.name, sourceUrl: page.url() });
+    all.push({ ...item, category: item.category || category.name, sourceUrl: page.url() });
     return true;
   };
 
