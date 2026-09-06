@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { chromium } from 'playwright';
 import { profileDir } from './paths.mjs';
 import { pageExtract, pageAutoScroll } from './extract.mjs';
+import { extractProducts, dedupeProducts } from './apidata.mjs';
 
 const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
@@ -260,32 +261,112 @@ export async function extractFromPage(page, selectors) {
 }
 
 /**
+ * アプリがサーバから受け取った JSON を記録する。
+ *
+ * 画面をキャンバスに描画するアプリ（Flutter など）では HTML に商品が存在しない。
+ * その場合でも、アプリ自身が受け取っているデータを読めば商品を取り出せる。
+ * こちらから API を呼ぶのではなく、アプリの通信を横で記録するだけ。
+ */
+export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8_000_000 } = {}) {
+  const re = pattern ? new RegExp(pattern, 'i') : /graphql|\/api\//i;
+  const entries = [];
+  let bytes = 0;
+
+  const onResponse = async (response) => {
+    if (entries.length >= maxEntries || bytes > maxBytes) return;
+    const url = response.url();
+    if (!re.test(url)) return;
+    const type = response.headers()['content-type'] ?? '';
+    if (!/json/i.test(type)) return;
+    try {
+      const text = await response.text();
+      bytes += text.length;
+      entries.push({ url, status: response.status(), json: JSON.parse(text) });
+    } catch {
+      // 本文を読めない応答（リダイレクト・キャンセル）は無視する
+    }
+  };
+
+  page.on('response', onResponse);
+  return {
+    entries,
+    /** これまでに記録した応答から商品を取り出す（from 以降だけを見る）。 */
+    products(from = 0) {
+      const out = [];
+      for (const entry of entries.slice(from)) out.push(...extractProducts(entry.json));
+      return dedupeProducts(out);
+    },
+    detach() {
+      page.off('response', onResponse);
+    },
+  };
+}
+
+/**
+ * 画面をスクロールしながら、新しいデータが届かなくなるまで待つ。
+ *
+ * キャンバスに描画するアプリでは DOM のスクロールが効かないため、
+ * マウスホイールの操作として送る。
+ */
+export async function scrollAndHarvest(page, capture, { rounds = 25, pause = 1200, stableRounds = 3 } = {}) {
+  const viewport = page.viewportSize() ?? { width: 1280, height: 900 };
+  await page.mouse.move(viewport.width / 2, viewport.height / 2).catch(() => {});
+  let stable = 0;
+  let seen = capture.entries.length;
+  for (let i = 0; i < rounds; i += 1) {
+    await page.mouse.wheel(0, Math.round(viewport.height * 0.8)).catch(() => {});
+    await page.evaluate(pageAutoScroll, { maxRounds: 2 }).catch(() => {});
+    await sleep(pause);
+    if (capture.entries.length === seen) {
+      stable += 1;
+      if (stable >= stableRounds) break;
+    } else {
+      stable = 0;
+      seen = capture.entries.length;
+    }
+  }
+  return capture.entries.length;
+}
+
+/**
  * ページ送り。
  *  none   … 1ページのみ
  *  scroll … 無限スクロール（openList のオートスクロールで完結）
  *  next   … 「次へ」ボタンを押せなくなるまで進む
  *  query  … URL に ?page=N を足していく
+ *
+ * 画面から取れなかった場合は、アプリがサーバから受け取った JSON から拾う
+ * （capture が渡されているとき）。
  */
-export async function collectCategory(page, category, config, { onPage } = {}) {
+export async function collectCategory(page, category, config, { onPage, capture } = {}) {
   const pagination = config.pagination || {};
   const mode = pagination.mode || 'scroll';
   const maxPages = Math.max(1, pagination.maxPages || 20);
   const waitMs = config.waitMs ?? 1500;
   const all = [];
   const seen = new Set();
-  let meta = null;
+  const meta = { mode: null, selectors: null, domCount: 0, apiCount: 0 };
+  const captureFrom = capture ? capture.entries.length : 0;
+
+  const add = (item) => {
+    const key = `${item.url || ''}|${item.name}|${item.priceText ?? item.price ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    all.push({ ...item, category: category.name, sourceUrl: page.url() });
+    return true;
+  };
 
   const takeCurrent = async (pageNo) => {
     const res = await extractFromPage(page, config.selectors);
-    if (!meta) meta = { mode: res.mode, selectors: res.selectors, signature: res.signature, depth: res.depth };
-    let added = 0;
-    for (const it of res.items) {
-      const key = `${it.url || ''}|${it.name}|${it.priceText}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      all.push({ ...it, category: category.name, sourceUrl: page.url(), pageNo });
-      added += 1;
+    if (!meta.mode) {
+      meta.mode = res.mode;
+      meta.selectors = res.selectors;
+      meta.signature = res.signature;
+      meta.depth = res.depth;
     }
+    let added = 0;
+    for (const it of res.items) if (add({ ...it, pageNo, source: 'dom' })) added += 1;
+    meta.domCount += added;
     if (onPage) onPage({ pageNo, found: res.count, added, mode: res.mode, url: page.url() });
     return { res, added };
   };
@@ -299,27 +380,38 @@ export async function collectCategory(page, category, config, { onPage } = {}) {
       const { res, added } = await takeCurrent(i);
       if (!res.count || added === 0) break;
     }
-    return { items: all, meta };
-  }
-
-  await openList(page, category.url, { waitMs });
-  await takeCurrent(1);
-  if (mode === 'next') {
-    const nextSelector = pagination.nextSelector;
-    if (!nextSelector) throw new Error('pagination.mode が "next" ですが pagination.nextSelector が未設定です。');
-    for (let i = 2; i <= maxPages; i += 1) {
-      const next = page.locator(nextSelector).first();
-      const usable = await next.isVisible().catch(() => false);
-      if (!usable) break;
-      const disabled = await next.isDisabled().catch(() => false);
-      if (disabled) break;
-      await next.click({ timeout: 10_000 }).catch(() => null);
-      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-      await sleep(waitMs);
-      await page.evaluate(pageAutoScroll, {}).catch(() => {});
-      const { added } = await takeCurrent(i);
-      if (added === 0) break;
+  } else {
+    await openList(page, category.url, { waitMs });
+    await takeCurrent(1);
+    if (mode === 'next') {
+      const nextSelector = pagination.nextSelector;
+      if (!nextSelector) throw new Error('pagination.mode が "next" ですが pagination.nextSelector が未設定です。');
+      for (let i = 2; i <= maxPages; i += 1) {
+        const next = page.locator(nextSelector).first();
+        const usable = await next.isVisible().catch(() => false);
+        if (!usable) break;
+        const disabled = await next.isDisabled().catch(() => false);
+        if (disabled) break;
+        await next.click({ timeout: 10_000 }).catch(() => null);
+        await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+        await sleep(waitMs);
+        await page.evaluate(pageAutoScroll, {}).catch(() => {});
+        const { added } = await takeCurrent(i);
+        if (added === 0) break;
+      }
     }
   }
+
+  if (capture) {
+    // 画面をスクロールすると続きが読み込まれる。届いた JSON から商品を拾う。
+    await scrollAndHarvest(page, capture, { rounds: maxPages * 2, pause: Math.max(800, waitMs) });
+    let added = 0;
+    for (const p of capture.products(captureFrom)) {
+      if (add({ ...p, pageNo: 1, source: 'api', priceText: '', rawText: p.name })) added += 1;
+    }
+    meta.apiCount = added;
+    if (added && onPage) onPage({ pageNo: 1, found: added, added, mode: 'api', url: page.url() });
+  }
+
   return { items: all, meta };
 }

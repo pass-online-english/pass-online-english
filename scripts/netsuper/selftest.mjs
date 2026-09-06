@@ -16,7 +16,11 @@ import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/comp
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { pageExtract } from './lib/extract.mjs';
-import { isSameDocumentNavigation, openList, extractFromPage, describeFrames } from './lib/browser.mjs';
+import { extractProducts, dedupeProducts, toAmount } from './lib/apidata.mjs';
+import {
+  isSameDocumentNavigation, openList, extractFromPage, describeFrames,
+  attachApiCapture, scrollAndHarvest,
+} from './lib/browser.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -433,6 +437,30 @@ const COLD_SPA_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8
 const SPA_HTML = spaHtml({ router: false });
 const ROUTER_SPA_HTML = spaHtml({ router: true });
 
+/**
+ * 画面をキャンバスに描画するアプリの再現（twidy と同じ構成）。
+ * HTML には商品が1つも存在せず、商品データは API から JSON で届く。
+ */
+const CANVAS_APP_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>テスト店</title></head><body>
+<div id="loading"><div class="spinner"></div></div>
+<canvas width="800" height="600"></canvas>
+<script>
+  fetch("/api/graphql", { method: "POST" }).then(function (r) { return r.json(); });
+</script>
+</body></html>`;
+
+const CANVAS_API_JSON = JSON.stringify({
+  data: {
+    products: {
+      edges: [
+        { node: { id: 'p1', name: 'トマト 1袋', taxIncludedPrice: 198, inStock: true } },
+        { node: { id: 'p2', name: 'きゅうり 3本', taxIncludedPrice: 158, inStock: true } },
+        { node: { id: 'p3', name: 'にんじん 1袋', taxIncludedPrice: 208, inStock: false } },
+      ],
+    },
+  },
+});
+
 /** 売場を iframe に入れているサイトの再現。 */
 const IFRAME_HOST_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>
 <header><p>3,000円以上で送料無料</p></header>
@@ -444,8 +472,14 @@ function startFixtureServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const pathname = new URL(req.url, 'http://127.0.0.1').pathname;
+      if (pathname === '/api/graphql') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(CANVAS_API_JSON);
+        return;
+      }
       const body =
-        pathname === '/host' ? IFRAME_HOST_HTML
+        pathname === '/canvas' ? CANVAS_APP_HTML
+        : pathname === '/host' ? IFRAME_HOST_HTML
         : pathname === '/inner' ? `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>${FIXTURES[0].html}</body></html>`
         : pathname === '/router' ? ROUTER_SPA_HTML
         : pathname === '/cold' ? COLD_SPA_HTML
@@ -570,6 +604,25 @@ async function runBrowserTests() {
         }
       });
 
+      await asyncTest('画面に商品が無くても受信データから取り出せる', async () => {
+        const canvas = await browser.newPage();
+        try {
+          const capture = attachApiCapture(canvas, { pattern: 'graphql' });
+          await openList(canvas, `${fixture.base}canvas`, { waitMs: 500 });
+          const dom = await extractFromPage(canvas, {});
+          assert.equal(dom.count, 0, '画面からは取れない前提のフィクスチャです');
+
+          await scrollAndHarvest(canvas, capture, { rounds: 2, pause: 300, stableRounds: 1 });
+          const products = capture.products(0);
+          assert.equal(products.length, 3, `受信データから取れていません（${products.length} 件）`);
+          assert.equal(products[0].name, 'トマト 1袋');
+          assert.equal(products[0].price, 198);
+          assert.equal(products[2].soldOut, true);
+        } finally {
+          await canvas.close();
+        }
+      });
+
       await asyncTest('売場が iframe の中にあっても取り出せる', async () => {
         const framed = await browser.newPage();
         try {
@@ -621,6 +674,105 @@ async function runBrowserTests() {
     await browser.close();
   }
 }
+
+console.log('\n── 受信データ（API）からの商品抽出 ──────────');
+
+// Relay 形式（edges / node）で、価格が入れ子になっている応答
+const GRAPHQL_RESPONSE = {
+  data: {
+    category: {
+      name: '野菜',
+      products: {
+        edges: [
+          {
+            node: {
+              id: 'UHJvZHVjdDox',
+              name: 'トマト 1袋',
+              price: { amount: 183, currency: 'JPY' },
+              taxIncludedPrice: 198,
+              unit: '1袋',
+              inStock: true,
+            },
+          },
+          {
+            node: {
+              id: 'UHJvZHVjdDoy',
+              name: 'にんじん 1袋',
+              price: { amount: 192, currency: 'JPY' },
+              taxIncludedPrice: 208,
+              inStock: false,
+            },
+          },
+        ],
+      },
+    },
+  },
+};
+
+test('入れ子の応答から商品を取り出せる', () => {
+  const products = extractProducts(GRAPHQL_RESPONSE);
+  assert.equal(products.length, 2);
+  assert.equal(products[0].name, 'トマト 1袋');
+});
+
+test('税込が明示されていればそれを採る', () => {
+  const [tomato] = extractProducts(GRAPHQL_RESPONSE);
+  assert.equal(tomato.price, 198);
+  assert.equal(tomato.priceKind, 'tax_included');
+  assert.deepEqual(tomato.candidates, [183, 198]);
+});
+
+test('在庫なしを売り切れとして扱う', () => {
+  const products = extractProducts(GRAPHQL_RESPONSE);
+  assert.equal(products[0].soldOut, false);
+  assert.equal(products[1].soldOut, true);
+});
+
+test('内容量の項目を拾い、無ければ商品名から補う', () => {
+  const products = extractProducts(GRAPHQL_RESPONSE);
+  assert.equal(products[0].unit, '1袋');
+  assert.equal(products[1].unit, '1袋');
+});
+
+test('名前だけ・価格だけのオブジェクトは商品とみなさない', () => {
+  assert.equal(extractProducts({ user: { name: '八木' } }).length, 0);
+  assert.equal(extractProducts({ cart: { totalPrice: 3200 } }).length, 0);
+});
+
+test('文字列の価格も読む', () => {
+  const p = extractProducts({ items: [{ name: '牛乳', price: '235' }] });
+  assert.equal(p[0].price, 235);
+});
+
+test('ありえない価格は採らない', () => {
+  assert.equal(extractProducts({ items: [{ name: 'あやしい', price: 0 }] }).length, 0);
+  assert.equal(extractProducts({ items: [{ name: 'あやしい', price: 99999999 }] }).length, 0);
+});
+
+test('toAmount は入れ子・文字列・全角を読む', () => {
+  assert.equal(toAmount(198), 198);
+  assert.equal(toAmount('1,280円'), 1280);
+  assert.equal(toAmount({ amount: 298, currency: 'JPY' }), 298);
+  assert.equal(toAmount('やすい'), null);
+});
+
+test('同じ商品は id でまとめる（後から来た価格を採る）', () => {
+  const merged = dedupeProducts([
+    { id: 'a', name: '牛乳', price: 235 },
+    { id: 'a', name: '牛乳', price: 228 },
+    { id: 'b', name: 'たまご', price: 268 },
+  ]);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].price, 228);
+});
+
+test('id が無ければ商品名でまとめる', () => {
+  const merged = dedupeProducts([
+    { name: '牛乳', price: 235 },
+    { name: '牛乳', price: 235 },
+  ]);
+  assert.equal(merged.length, 1);
+});
 
 console.log('\n── SPA（#/ で画面を切り替えるサイト）の遷移判定 ──');
 

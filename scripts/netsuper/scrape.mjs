@@ -20,7 +20,7 @@ import { main, log, section, warn, isEntrypoint } from '../analytics/lib/cli.mjs
 import { toCSV, mdTable, fmtNum } from '../analytics/lib/output.mjs';
 import { outputRoot, ensureDir, today, relativeToCwd } from './lib/paths.mjs';
 import { loadConfig } from './lib/config.mjs';
-import { openBrowser, firstPage, collectCategory, hasSession, sleep } from './lib/browser.mjs';
+import { openBrowser, firstPage, collectCategory, attachApiCapture, hasSession, sleep } from './lib/browser.mjs';
 import { pickPrice, extractUnit, normalizeText } from './lib/price.mjs';
 
 const HELP = `
@@ -31,18 +31,26 @@ const HELP = `
 
 export const CSV_COLUMNS = [
   'collectedAt', 'category', 'name', 'price', 'priceKind', 'priceCandidates',
-  'unit', 'soldOut', 'url', 'sourceUrl', 'priceRaw',
+  'unit', 'soldOut', 'url', 'source', 'sourceUrl', 'priceRaw',
 ];
 
-/** ブラウザから受け取った生データを、価格を解釈した行に変換する。 */
+/**
+ * 収集した生データを、価格を解釈した行に変換する。
+ *
+ * 画面から取った商品は価格が文字列（「本体298円（税込321円）」）なので解釈が要る。
+ * API から取った商品はすでに数値なので、そのまま使う。
+ */
 export function toRows(rawItems, { collectedAt = today() } = {}) {
   const rows = [];
   const seen = new Set();
   for (const it of rawItems) {
     const name = normalizeText(it.name);
-    const parsed = pickPrice(it.priceText || it.rawText || '');
-    const key = `${name}|${it.url || ''}|${parsed.price ?? ''}`;
+    const fromApi = typeof it.price === 'number';
+    const parsed = fromApi
+      ? { price: it.price, priceKind: it.priceKind || 'api', candidates: it.candidates || [], priceRaw: '' }
+      : pickPrice(it.priceText || it.rawText || '');
     if (!name && parsed.price === null) continue;
+    const key = `${name}|${it.url || ''}|${parsed.price ?? ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push({
@@ -51,10 +59,11 @@ export function toRows(rawItems, { collectedAt = today() } = {}) {
       name,
       price: parsed.price,
       priceKind: parsed.priceKind,
-      priceCandidates: parsed.candidates.join('/'),
-      unit: extractUnit(it.rawText || ''),
+      priceCandidates: (parsed.candidates || []).join('/'),
+      unit: it.unit || extractUnit(it.rawText || name),
       soldOut: it.soldOut ? 1 : 0,
       url: it.url || '',
+      source: it.source || (fromApi ? 'api' : 'dom'),
       sourceUrl: it.sourceUrl || '',
       priceRaw: (it.priceText || '').slice(0, 60),
     });
@@ -92,6 +101,11 @@ export function buildSummary(rows, { store, collectedAt, categories }) {
       { key: 'avg', label: '平均価格', align: 'right', format: (v) => (v === null ? '—' : `${fmtNum(v)}円`) },
       { key: 'soldOut', label: '売切', align: 'right', format: (v) => fmtNum(v) },
     ]),
+    '',
+    '## 取得元',
+    '',
+    `画面から ${fmtNum(rows.filter((r) => r.source === 'dom').length)} 件 / ` +
+      `アプリが受け取ったデータから ${fmtNum(rows.filter((r) => r.source === 'api').length)} 件`,
     '',
     '## 確認したい行',
     '',
@@ -136,11 +150,15 @@ export const run = async () => {
   const failures = [];
   try {
     const page = await firstPage(context);
+    // 画面に商品が出ないアプリ向けに、サーバから届く JSON も記録しておく
+    const capture = attachApiCapture(page, { pattern: cfg.apiPattern });
     for (const [i, cat] of categories.entries()) {
       log(`  [${i + 1}/${categories.length}] ${cat.name}`);
       try {
         const { items, meta } = await collectCategory(page, cat, cfg, {
-          onPage: ({ pageNo, found, added }) => log(`      p${pageNo}: ${found} 件検出 / ${added} 件追加`),
+          capture,
+          onPage: ({ pageNo, found, added, mode }) =>
+            log(mode === 'api' ? `      受信データから ${added} 件` : `      p${pageNo}: ${found} 件検出 / ${added} 件追加`),
         });
         if (!items.length) failures.push({ category: cat.name, reason: '0件（一覧URLか描画待ちを確認）' });
         if (meta?.mode === 'auto' && i === 0) log(`      自動判定: ${meta.selectors?.item || meta.signature || '—'}`);

@@ -16,7 +16,10 @@ import { parseCliArgs, parseLimit } from '../analytics/lib/args.mjs';
 import { main, log, section } from '../analytics/lib/cli.mjs';
 import { outputRoot, ensureDir, relativeToCwd } from './lib/paths.mjs';
 import { loadConfig, configExists, updateSelectors, ConfigError } from './lib/config.mjs';
-import { openBrowser, firstPage, openList, extractFromPage, describeFrames, hasSession } from './lib/browser.mjs';
+import {
+  openBrowser, firstPage, openList, extractFromPage, describeFrames,
+  attachApiCapture, scrollAndHarvest, hasSession,
+} from './lib/browser.mjs';
 import { pickPrice, extractUnit } from './lib/price.mjs';
 
 const HELP = `
@@ -61,6 +64,8 @@ main(async () => {
   let finalUrl = url;
   let frames = [];
   let nav = null;
+  let capture = null;
+  let apiProducts = [];
   // 未捕捉の例外は描画停止の直接原因になる。console のエラー（画像404など）は参考情報。
   const problems = { errors: [], console: [], failedRequests: [], badResponses: [] };
   // アプリがサーバに何を聞いて何を返されたか。読み込み中で止まる原因はここに出る
@@ -81,8 +86,12 @@ main(async () => {
       else if (res.status() >= 400) problems.badResponses.push(`${res.status()} ${res.url().slice(0, 110)}`);
     });
 
+    capture = attachApiCapture(page, { pattern: cfg?.apiPattern });
     nav = await openList(page, url, { waitMs });
     res = await extractFromPage(page, cfg?.selectors);
+    // 画面に商品が出ないアプリでも、届いた JSON に載っていることがある
+    if (!res.count) await scrollAndHarvest(page, capture, { rounds: 8, pause: Math.max(800, waitMs) });
+    apiProducts = capture.products(0);
     finalUrl = page.url();
     frames = await describeFrames(page);
     bodyText = await page
@@ -92,6 +101,17 @@ main(async () => {
     dir = ensureDir(path.join(outputRoot(), `probe-${stamp()}`));
     fs.writeFileSync(path.join(dir, 'page.html'), await page.content(), 'utf8');
     fs.writeFileSync(path.join(dir, 'page.txt'), bodyText, 'utf8');
+    // 受信データそのものは住所や氏名を含みうるので、抜き出した商品と宛先だけ残す
+    fs.writeFileSync(
+      path.join(dir, 'api-products.json'),
+      `${JSON.stringify(apiProducts, null, 2)}\n`,
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(dir, 'api-endpoints.txt'),
+      capture.entries.map((e) => `${e.status} ${e.url}`).join('\n'),
+      'utf8'
+    );
     await page.screenshot({ path: path.join(dir, 'page.png'), fullPage: false }).catch(() => {});
     fs.writeFileSync(
       path.join(dir, 'extract.json'),
@@ -110,6 +130,23 @@ main(async () => {
   log(`  商品件数   : ${res.count} 件`);
   if (res.selectors?.item) log(`  セレクタ   : ${res.selectors.item}`);
   log(`  保存先     : ${relativeToCwd(dir)}/（page.html / page.txt / page.png / extract.json）`);
+
+  if (apiProducts.length) {
+    section(`アプリが受け取ったデータから ${apiProducts.length} 件`);
+    for (const p of apiProducts.slice(0, limit)) {
+      log(`  ・${p.name}`);
+      log(`      価格 : ${p.price} 円${p.priceKind === 'tax_included' ? '（税込）' : p.candidates.length > 1 ? `（候補: ${p.candidates.join(' / ')}）` : ''}`);
+      if (p.unit) log(`      容量 : ${p.unit}`);
+      if (p.soldOut) log('      状態 : 売り切れ');
+    }
+    log(`\n  全件: ${relativeToCwd(dir)}/api-products.json`);
+    if (!res.count) {
+      section('この売場はこの方法で収集できます');
+      log('  画面には商品が出ていませんが、データは取れています。');
+      log('  そのまま `npm run netsuper:scrape` で全カテゴリを収集できます。');
+      return;
+    }
+  }
 
   if (res.mode === 'failed') {
     section('取り出せませんでした');
@@ -140,6 +177,7 @@ main(async () => {
       for (const r of [...new Set(problems.badResponses)].slice(0, 8)) log(`  ${r}`);
     }
     section('アプリがサーバに聞いた内容');
+    if (capture?.entries.length) log(`  （うち JSON を記録できたもの: ${capture.entries.length} 件 / 商品は見つからず）`);
     if (!api.length) {
       log('  1件もありません。アプリがサーバに問い合わせる前の段階で止まっています。');
     } else {
