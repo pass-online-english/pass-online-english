@@ -462,6 +462,22 @@ const CANVAS_API_JSON = JSON.stringify({
   },
 });
 
+/**
+ * 通信を Service Worker が代行するアプリの再現。
+ * ページ自身は商品データを取りに行かず、Service Worker が取ってくる。
+ * ページ単位の監視ではこの通信が見えない。
+ */
+const SW_APP_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>SW店</title></head><body>
+<div id="loading"></div>
+<script>navigator.serviceWorker.register("/sw.js");</script>
+</body></html>`;
+
+const SW_SCRIPT = `
+self.addEventListener("install", function (event) {
+  event.waitUntil(fetch("/api-graphql.json").then(function (r) { return r.json(); }));
+});
+`;
+
 /** 売場を iframe に入れているサイトの再現。 */
 const IFRAME_HOST_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>
 <header><p>3,000円以上で送料無料</p></header>
@@ -473,6 +489,16 @@ function startFixtureServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const pathname = new URL(req.url, 'http://127.0.0.1').pathname;
+      if (pathname === '/sw.js') {
+        res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8' });
+        res.end(SW_SCRIPT);
+        return;
+      }
+      if (pathname === '/api-graphql.json') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(CANVAS_API_JSON);
+        return;
+      }
       if (pathname === '/api/graphql') {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(CANVAS_API_JSON);
@@ -480,6 +506,7 @@ function startFixtureServer() {
       }
       const body =
         pathname === '/canvas' ? CANVAS_APP_HTML
+        : pathname === '/sw-app' ? SW_APP_HTML
         : pathname === '/host' ? IFRAME_HOST_HTML
         : pathname === '/inner' ? `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>${FIXTURES[0].html}</body></html>`
         : pathname === '/router' ? ROUTER_SPA_HTML
@@ -621,6 +648,28 @@ async function runBrowserTests() {
           assert.equal(products[2].soldOut, true);
         } finally {
           await canvas.close();
+        }
+      });
+
+      await asyncTest('Service Worker が代行する通信も記録できる', async () => {
+        const swPage = await browser.newPage();
+        try {
+          const capture = attachApiCapture(swPage, {});
+          await swPage.goto(`${fixture.base}sw-app`, { waitUntil: 'domcontentloaded' });
+          // Service Worker の install で商品データを取りに行く
+          const deadline = Date.now() + 15_000;
+          while (Date.now() < deadline && capture.products(0).length === 0) {
+            await new Promise((r) => setTimeout(r, 300));
+          }
+          const products = capture.products(0);
+          assert.equal(
+            products.length,
+            3,
+            `Service Worker の通信を取りこぼしています（${products.length} 件 / 記録: ${capture.entries.map((e) => e.url).join(', ') || 'なし'}）`
+          );
+          assert.equal(products[0].name, 'トマト 1袋');
+        } finally {
+          await swPage.close();
         }
       });
 

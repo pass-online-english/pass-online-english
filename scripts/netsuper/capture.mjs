@@ -95,14 +95,29 @@ export const run = async () => {
   let timer;
   try {
     const page = await firstPage(context);
-    const capture = attachApiCapture(page, { pattern: cfg?.apiPattern, maxEntries: 5000 });
+    // 商品が載っていそうな通信は、届いた時点で知らせる（進んでいるか分かるように）
+    const shown = new Set();
+    const capture = attachApiCapture(page, {
+      pattern: cfg?.apiPattern,
+      maxEntries: 5000,
+      onEntry: (entry) => {
+        const host = (() => { try { return new URL(entry.url).host; } catch { return entry.url; } })();
+        if (shown.has(host)) return;
+        shown.add(host);
+        log(`  受信: ${host}`);
+      },
+    });
     await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
 
-    // 記録できている実感がないと不安なので、件数を出し続ける
+    // 同じ行を延々と出しても意味がないので、数が変わったときだけ出す
+    let last = '';
     timer = setInterval(() => {
       const n = capture.products(0).length;
-      stdout.write(`  記録中… 商品 ${String(n).padStart(4)} 件 / 通信 ${String(capture.entries.length).padStart(4)} 件\n`);
-    }, 5000);
+      const line = `  記録中… 商品 ${String(n).padStart(4)} 件 / 通信 ${String(capture.entries.length).padStart(4)} 件`;
+      if (line === last) return;
+      last = line;
+      stdout.write(`${line}\n`);
+    }, 3000);
 
     await waitUntilClosed(context);
     clearInterval(timer);

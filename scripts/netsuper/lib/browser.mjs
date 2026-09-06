@@ -293,7 +293,11 @@ export async function extractFromPage(page, selectors) {
  * その場合でも、アプリ自身が受け取っているデータを読めば商品を取り出せる。
  * こちらから API を呼ぶのではなく、アプリの通信を横で記録するだけ。
  */
-export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8_000_000 } = {}) {
+export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8_000_000, onEntry } = {}) {
+  // ページ単位ではなくブラウザ全体で監視する。
+  // Service Worker（通信を代行する仕組み）を通る通信はページ単位では見えず、
+  // アプリが商品を取りに行く通信がまるごと抜け落ちる。別タブも同時に拾える。
+  const context = page.context();
   // 既定では JSON の応答をすべて記録する。宛先を絞ると、商品が載っている通信を
   // 取り逃したときに原因が分かりにくい。絞りたい場合だけ pattern を渡す。
   const re = pattern ? new RegExp(pattern, 'i') : /./;
@@ -310,13 +314,15 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
       const text = await response.text();
       bytes += text.length;
       // どの画面を見ているときに届いたか。売場ごとの仕分けに使う
-      entries.push({ url, status: response.status(), pageUrl: page.url(), json: JSON.parse(text) });
+      const entry = { url, status: response.status(), pageUrl: page.url(), json: JSON.parse(text) };
+      entries.push(entry);
+      if (onEntry) onEntry(entry);
     } catch {
       // 本文を読めない応答（リダイレクト・キャンセル）は無視する
     }
   };
 
-  page.on('response', onResponse);
+  context.on('response', onResponse);
   return {
     entries,
     /** これまでに記録した応答から商品を取り出す（from 以降だけを見る）。 */
@@ -328,7 +334,7 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
       return dedupeProducts(out);
     },
     detach() {
-      page.off('response', onResponse);
+      context.off('response', onResponse);
     },
   };
 }
