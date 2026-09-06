@@ -284,7 +284,8 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
     try {
       const text = await response.text();
       bytes += text.length;
-      entries.push({ url, status: response.status(), json: JSON.parse(text) });
+      // どの画面を見ているときに届いたか。売場ごとの仕分けに使う
+      entries.push({ url, status: response.status(), pageUrl: page.url(), json: JSON.parse(text) });
     } catch {
       // 本文を読めない応答（リダイレクト・キャンセル）は無視する
     }
@@ -296,7 +297,9 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
     /** これまでに記録した応答から商品を取り出す（from 以降だけを見る）。 */
     products(from = 0) {
       const out = [];
-      for (const entry of entries.slice(from)) out.push(...extractProducts(entry.json));
+      for (const entry of entries.slice(from)) {
+        for (const p of extractProducts(entry.json)) out.push({ ...p, sourceUrl: entry.pageUrl || entry.url });
+      }
       return dedupeProducts(out);
     },
     detach() {

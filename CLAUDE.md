@@ -63,6 +63,7 @@ reports/              分析結果・収集結果の出力先（.gitignore 済�
 | 依頼内容 | 使うコマンド |
 |---|---|
 | 価格を集める | `npm run netsuper:scrape` |
+| 自動で回れないとき（人が見て回る） | `npm run netsuper:capture` |
 | 店頭価格・前回と比べる | `npm run netsuper:diff` |
 | 取り出せるか試す・セレクタを調べる | `npm run netsuper:probe` |
 | ログインし直す | `npm run netsuper:login` |

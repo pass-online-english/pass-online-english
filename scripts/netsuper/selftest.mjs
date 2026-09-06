@@ -15,6 +15,7 @@ import { parseCSV, parseStorePrices, toNumber } from './lib/csv.mjs';
 import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
+import { assignCategories } from './capture.mjs';
 import { pageExtract } from './lib/extract.mjs';
 import { extractProducts, dedupeProducts, toAmount } from './lib/apidata.mjs';
 import {
@@ -772,6 +773,35 @@ test('id が無ければ商品名でまとめる', () => {
     { name: '牛乳', price: 235 },
   ]);
   assert.equal(merged.length, 1);
+});
+
+console.log('\n── 手動で見て回ったときの仕分け ──────────────');
+
+const CATS = [
+  { name: '野菜', url: 'https://twidy.jp/#/category/shop/Q2F0ZWdvcnk6MQ==' },
+  { name: '精肉', url: 'https://twidy.jp/#/category/shop/Q2F0ZWdvcnk6OQ==' },
+];
+
+test('見ていた画面から売場を判定する', () => {
+  const rows = assignCategories(
+    [
+      { name: 'トマト', price: 198, sourceUrl: 'https://twidy.jp/#/category/shop/Q2F0ZWdvcnk6MQ==' },
+      { name: '豚バラ', price: 498, sourceUrl: 'https://twidy.jp/#/category/shop/Q2F0ZWdvcnk6OQ==' },
+    ],
+    CATS
+  );
+  assert.equal(rows[0].category, '野菜');
+  assert.equal(rows[1].category, '精肉');
+});
+
+test('設定にない売場は空欄にする（適当な名前を付けない）', () => {
+  const rows = assignCategories([{ name: '謎', price: 100, sourceUrl: 'https://twidy.jp/#/category/shop/OTHER' }], CATS);
+  assert.equal(rows[0].category, '');
+});
+
+test('見ていた画面が分からなくても落ちない', () => {
+  const rows = assignCategories([{ name: '謎', price: 100 }], CATS);
+  assert.equal(rows[0].category, '');
 });
 
 console.log('\n── SPA（#/ で画面を切り替えるサイト）の遷移判定 ──');

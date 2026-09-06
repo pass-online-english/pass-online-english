@@ -13,6 +13,7 @@
 | セッションが生きているか確認する | `npm run netsuper:login -- --check` |
 | 一覧ページから取り出せるか試す | `npm run netsuper:probe` |
 | 全カテゴリを巡回して価格を集める | `npm run netsuper:scrape` |
+| 自分で見て回りながら価格を記録する | `npm run netsuper:capture` |
 | 店頭価格・前回と比べる | `npm run netsuper:diff` |
 | ロジックの自己テスト（接続なし） | `npm run netsuper:selftest` |
 
@@ -57,6 +58,24 @@ npm run netsuper:diff
 | `summary.md` | カテゴリ別の件数と平均価格 |
 | `diff.md` | 買い物リストと前回からの変化 |
 | `buy-online.csv` | 「ネットで買ってよさそう」だけを抜いたもの |
+
+## 自動で回れないとき（capture）
+
+自動操作でうまく動かないアプリ向けの方法。
+
+```bash
+npm run netsuper:capture
+```
+
+ブラウザが開くので、**普段の買い物と同じように売場を見て回る**。
+下までスクロールした分だけ記録される。見終わったらターミナルで Enter を押すと保存される。
+
+画面の操作は人がやり、ツールはアプリが受け取ったデータを記録するだけ。
+アプリから見ればいつもの操作と同じなので、自動操作でつまずく余地がない。
+
+出力は `scrape` と同じなので、そのまま `npm run netsuper:diff` に進める。
+売場の名前は、設定の `categories` の URL と照らして付ける。
+一致しなければ空欄にする（推測で名前を付けない）。
 
 ## 店頭価格メモ
 
