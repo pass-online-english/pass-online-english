@@ -22,6 +22,7 @@
     "netsuper:probe": "node scripts/netsuper/probe.mjs",
     "netsuper:capture": "node scripts/netsuper/capture.mjs",
     "netsuper:scrape": "node scripts/netsuper/scrape.mjs",
+    "netsuper:table": "node scripts/netsuper/table.mjs",
     "netsuper:diff": "node scripts/netsuper/diff.mjs",
     "netsuper:selftest": "node scripts/netsuper/selftest.mjs"
   },

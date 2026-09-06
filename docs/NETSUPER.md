@@ -14,6 +14,7 @@
 | 一覧ページから取り出せるか試す | `npm run netsuper:probe` |
 | 全カテゴリを巡回して価格を集める | `npm run netsuper:scrape` |
 | 自分で見て回りながら価格を記録する | `npm run netsuper:capture` |
+| 集めた結果を表で見る | `npm run netsuper:table` |
 | 店頭価格・前回と比べる | `npm run netsuper:diff` |
 | ロジックの自己テスト（接続なし） | `npm run netsuper:selftest` |
 
@@ -79,6 +80,23 @@ npm run netsuper:capture
 出力は `scrape` と同じなので、そのまま `npm run netsuper:diff` に進める。
 売場の名前は、設定の `categories` の URL と照らして付ける。
 一致しなければ空欄にする（推測で名前を付けない）。
+
+## 集めた結果を表で見る
+
+```bash
+npm run netsuper:table                      # 画面に表示（安い順）
+npm run netsuper:table -- --category 野菜   # 売場をしぼる
+npm run netsuper:table -- --sort name       # 名前順
+npm run netsuper:table -- --limit 200       # 表示件数
+npm run netsuper:table -- --date 2026-08-30 # 過去の収集結果
+```
+
+同時に `items.md`（売場ごとの Markdown の表）を書き出す。
+表計算で開きたいときは `items.csv` をそのまま開けばよい。
+
+```bash
+open reports/netsuper/2026-09-06/items.csv
+```
 
 ## 店頭価格メモ
 

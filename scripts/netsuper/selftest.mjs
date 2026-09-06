@@ -16,6 +16,7 @@ import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/comp
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { assignCategories } from './capture.mjs';
+import { buildItemsMarkdown } from './table.mjs';
 import { pageExtract } from './lib/extract.mjs';
 import { extractProducts, dedupeProducts, toAmount } from './lib/apidata.mjs';
 import {
@@ -927,6 +928,39 @@ test('id が無ければ商品名でまとめる', () => {
     { name: '牛乳', price: 235 },
   ]);
   assert.equal(merged.length, 1);
+});
+
+console.log('\n── 一覧表の組み立て ──────────────────────────');
+
+const TABLE_ROWS = [
+  { category: '野菜', name: 'トマト 1袋', price: 198, unit: '1袋', soldOut: 0 },
+  { category: '野菜', name: 'にんじん 1袋', price: 208, unit: '1袋', soldOut: 1 },
+  { category: '牛乳', name: '明治 おいしい牛乳 900ml', price: 235, unit: '900ml', soldOut: 0 },
+];
+
+test('売場ごとの表になる', () => {
+  const md = buildItemsMarkdown(TABLE_ROWS, { store: 'テスト店', collectedAt: '2026-09-06' });
+  assert.ok(md.includes('## 野菜（2 件）'));
+  assert.ok(md.includes('## 牛乳（1 件）'));
+  assert.ok(md.includes('トマト 1袋'));
+});
+
+test('売場の中は安い順に並ぶ', () => {
+  const md = buildItemsMarkdown(TABLE_ROWS, { store: 'テスト店', collectedAt: '2026-09-06' });
+  assert.ok(md.indexOf('トマト 1袋') < md.indexOf('にんじん 1袋'));
+});
+
+test('売り切れが分かる', () => {
+  const md = buildItemsMarkdown(TABLE_ROWS, { store: 'テスト店', collectedAt: '2026-09-06' });
+  assert.ok(md.includes('売切'));
+});
+
+test('売場が空欄でも表にできる', () => {
+  const md = buildItemsMarkdown([{ category: '', name: '謎の商品', price: 100, unit: '', soldOut: 0 }], {
+    store: '',
+    collectedAt: '2026-09-06',
+  });
+  assert.ok(md.includes('（売場不明）'));
 });
 
 console.log('\n── 手動で見て回ったときの仕分け ──────────────');
