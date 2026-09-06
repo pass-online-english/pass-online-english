@@ -20,7 +20,7 @@ import { main, log, section, warn, isEntrypoint } from '../analytics/lib/cli.mjs
 import { toCSV, mdTable, fmtNum } from '../analytics/lib/output.mjs';
 import { outputRoot, ensureDir, today, relativeToCwd } from './lib/paths.mjs';
 import { loadConfig } from './lib/config.mjs';
-import { launch, newContext, collectCategory, hasSession, sleep } from './lib/browser.mjs';
+import { openBrowser, firstPage, collectCategory, hasSession, sleep } from './lib/browser.mjs';
 import { pickPrice, extractUnit, normalizeText } from './lib/price.mjs';
 
 const HELP = `
@@ -131,12 +131,11 @@ export const run = async () => {
 
   section(`収集開始（${categories.length} カテゴリ）`);
   const collectedAt = today();
-  const browser = await launch({ headed: Boolean(values.headed) });
+  const context = await openBrowser({ headed: Boolean(values.headed) });
   const raw = [];
   const failures = [];
   try {
-    const context = await newContext(browser);
-    const page = await context.newPage();
+    const page = await firstPage(context);
     for (const [i, cat] of categories.entries()) {
       log(`  [${i + 1}/${categories.length}] ${cat.name}`);
       try {
@@ -153,7 +152,7 @@ export const run = async () => {
       if (i < categories.length - 1) await sleep(cfg.waitMs ?? 1500);
     }
   } finally {
-    await browser.close();
+    await context.close();
   }
 
   const rows = toRows(raw, { collectedAt });
@@ -178,6 +177,13 @@ export const run = async () => {
   if (failures.length) {
     log('');
     for (const f of failures) warn(`  取得できず: ${f.category} — ${f.reason}`);
+    if (failures.length === categories.length) {
+      log('');
+      log('  すべてのカテゴリで0件でした。個々のセレクタではなく、');
+      log('  ログイン状態か表示中の画面そのものが原因の可能性が高いです。');
+      log('  次で実際の画面を確認してください（ブラウザが表示されます）。');
+      log(`    npm run netsuper:probe -- --headed --url "${categories[0].url}"`);
+    }
   }
   log('\n  次: `npm run netsuper:diff`（店頭価格メモ・前回との比較）');
 };

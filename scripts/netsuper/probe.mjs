@@ -16,7 +16,7 @@ import { parseCliArgs, parseLimit } from '../analytics/lib/args.mjs';
 import { main, log, section } from '../analytics/lib/cli.mjs';
 import { outputRoot, ensureDir, relativeToCwd } from './lib/paths.mjs';
 import { loadConfig, configExists, updateSelectors, ConfigError } from './lib/config.mjs';
-import { launch, newContext, openList, extractFromPage, hasSession } from './lib/browser.mjs';
+import { openBrowser, firstPage, openList, extractFromPage, hasSession } from './lib/browser.mjs';
 import { pickPrice, extractUnit } from './lib/price.mjs';
 
 const HELP = `
@@ -50,38 +50,55 @@ main(async () => {
     log('  `npm run netsuper:login` を先に実行してください。\n');
   }
 
-  const browser = await launch({ headed: Boolean(values.headed) });
+  const context = await openBrowser({ headed: Boolean(values.headed) });
   let res;
   let dir;
+  let bodyText = '';
+  let finalUrl = url;
   try {
-    const context = await newContext(browser);
-    const page = await context.newPage();
+    const page = await firstPage(context);
     await openList(page, url, { waitMs: cfg?.waitMs ?? 1500 });
     res = await extractFromPage(page, cfg?.selectors);
+    finalUrl = page.url();
+    bodyText = await page
+      .evaluate(() => (document.body ? document.body.innerText.replace(/\n{2,}/g, '\n') : ''))
+      .catch(() => '');
 
     dir = ensureDir(path.join(outputRoot(), `probe-${stamp()}`));
     fs.writeFileSync(path.join(dir, 'page.html'), await page.content(), 'utf8');
+    fs.writeFileSync(path.join(dir, 'page.txt'), bodyText, 'utf8');
     await page.screenshot({ path: path.join(dir, 'page.png'), fullPage: false }).catch(() => {});
     fs.writeFileSync(path.join(dir, 'extract.json'), `${JSON.stringify(res, null, 2)}\n`, 'utf8');
   } finally {
-    await browser.close();
+    await context.close();
   }
 
   section('抽出結果');
   log(`  URL        : ${url}`);
+  if (finalUrl !== url) log(`  遷移後URL  : ${finalUrl}（別の画面に飛ばされています）`);
   log(`  判定モード : ${res.mode}${res.signature ? `（署名: ${res.signature} / 深さ ${res.depth}）` : ''}`);
   log(`  商品件数   : ${res.count} 件`);
   if (res.selectors?.item) log(`  セレクタ   : ${res.selectors.item}`);
-  log(`  保存先     : ${relativeToCwd(dir)}/（page.html / page.png / extract.json）`);
+  log(`  保存先     : ${relativeToCwd(dir)}/（page.html / page.txt / page.png / extract.json）`);
 
   if (res.mode === 'failed') {
     section('取り出せませんでした');
     log(`  価格らしきテキストを含む要素: ${res.priceNodeCount ?? 0} 個`);
-    log('  次のどれかが原因のことが多いです。');
-    log('   1. ログインしていない（`npm run netsuper:login`）');
-    log('   2. URL が一覧ページではない（カテゴリを開いた状態のURLを使う）');
-    log('   3. 描画が遅い（設定の waitMs を 3000 などに増やす）');
-    log(`  ${relativeToCwd(dir)}/page.html を渡してもらえれば、こちらでセレクタを特定します。`);
+    section('実際に表示されていた文言（先頭600文字）');
+    log(bodyText.trim() ? bodyText.trim().slice(0, 600) : '（本文が空。JS の描画が終わっていない可能性があります）');
+    section('考えられる原因');
+    if (/(ログイン|会員登録|サインイン|新規登録|パスワード)/.test(bodyText)) {
+      log('  ログイン画面が表示されています。`npm run netsuper:login` をやり直してください。');
+    } else if (/(店舗|お届け先|エリア|郵便番号|配達)/.test(bodyText)) {
+      log('  店舗またはお届け先の選択を求められています。');
+      log('  `npm run netsuper:login` で開いたブラウザで、商品一覧が見えるところまで進めてください。');
+    } else if (!bodyText.trim()) {
+      log('  本文が空です。描画待ちが足りない可能性があります（設定の waitMs を 5000 に）。');
+    } else {
+      log('  一覧ページではない可能性があります。売場を開いたときのURLか確認してください。');
+    }
+    log(`\n  画面を目で見るには: npm run netsuper:probe -- --headed --url "${url}"`);
+    log(`  保存済みの画面   : ${relativeToCwd(dir)}/page.png`);
     process.exitCode = 1;
     return;
   }

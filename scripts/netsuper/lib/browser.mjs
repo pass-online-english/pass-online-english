@@ -6,9 +6,8 @@
  *   置き場所はリポジトリ外・パーミッション 0600（paths.sessionPath）。
  */
 import fs from 'node:fs';
-import path from 'node:path';
 import { chromium } from 'playwright';
-import { sessionPath } from './paths.mjs';
+import { profileDir } from './paths.mjs';
 import { pageExtract, pageAutoScroll } from './extract.mjs';
 
 const DEFAULT_UA =
@@ -16,37 +15,58 @@ const DEFAULT_UA =
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * ログイン済みの印。
+ * プロファイルは probe を1回動かすだけでも作られるため、ディレクトリの有無では
+ * 判定できない。login を最後まで終えたときだけ置く目印を見る。
+ */
+const LOGIN_MARKER = 'netsuper-login-done';
+
 export function hasSession() {
-  return fs.existsSync(sessionPath());
+  return fs.existsSync(`${profileDir()}/${LOGIN_MARKER}`);
 }
 
-export async function launch({ headed = false } = {}) {
-  return chromium.launch({
-    headless: !headed,
-    // 実行環境に同梱の Chromium を使いたいときの逃げ道（CI / コンテナ用）
-    executablePath: process.env.NETSUPER_CHROMIUM_PATH || undefined,
-  });
-}
-
-export async function newContext(browser, { useSession = true } = {}) {
-  const file = sessionPath();
-  const storageState = useSession && fs.existsSync(file) ? file : undefined;
-  return browser.newContext({
-    storageState,
-    locale: 'ja-JP',
-    timezoneId: 'Asia/Tokyo',
-    viewport: { width: 1280, height: 900 },
-    userAgent: process.env.NETSUPER_USER_AGENT || DEFAULT_UA,
-  });
-}
-
-/** セッションを 0600 で保存する。 */
-export async function saveSession(context) {
-  const file = sessionPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  await context.storageState({ path: file });
-  fs.chmodSync(file, 0o600);
+/** login が完了したときに呼ぶ。 */
+export function markLoggedIn() {
+  const file = `${profileDir()}/${LOGIN_MARKER}`;
+  fs.writeFileSync(file, `${new Date().toISOString()}\n`, { mode: 0o600 });
   return file;
+}
+
+/**
+ * ログイン状態を保持したブラウザを開く。
+ *
+ * プロファイルを使い回すため、Cookie / localStorage / IndexedDB / Service Worker が
+ * そのまま残る。認証情報をどこに置くサイトでもログイン状態を保てる。
+ */
+export async function openBrowser({ headed = false } = {}) {
+  const dir = profileDir();
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    return await chromium.launchPersistentContext(dir, {
+      headless: !headed,
+      locale: 'ja-JP',
+      timezoneId: 'Asia/Tokyo',
+      viewport: { width: 1280, height: 900 },
+      userAgent: process.env.NETSUPER_USER_AGENT || DEFAULT_UA,
+      // 実行環境に同梱の Chromium を使いたいときの逃げ道（CI / コンテナ用）
+      executablePath: process.env.NETSUPER_CHROMIUM_PATH || undefined,
+    });
+  } catch (err) {
+    if (/ProcessSingleton|SingletonLock|already (in use|running)/i.test(String(err.message))) {
+      throw new Error(
+        'このツールが開いたブラウザがまだ起動しています。\n' +
+          '  そのウィンドウを閉じてから、もう一度実行してください。'
+      );
+    }
+    throw err;
+  }
+}
+
+/** プロファイル内の最初のページを使う（新しいタブを増やさない）。 */
+export async function firstPage(context) {
+  const [existing] = context.pages();
+  return existing ?? context.newPage();
 }
 
 /**

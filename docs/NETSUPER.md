@@ -82,10 +82,17 @@ npm run netsuper:diff
 
 - **ID / パスワードはスクリプトを通らない。** `netsuper:login` はブラウザを開くだけで、
   ログインは人が手でやる
-- 保存されるのはログイン後の Cookie / localStorage のみ。
-  置き場所は**リポジトリの外**（既定 `~/.config/pass-netsuper/session.json`、パーミッション 0600）
-- リポジトリ内のパスを `NETSUPER_SESSION` に指定するとエラーで止まる（誤コミット防止）
-- セッションが切れたら `npm run netsuper:login` をやり直す
+- 残るのは**ブラウザのプロファイル**（Cookie / localStorage / IndexedDB / Service Worker）。
+  置き場所は**リポジトリの外**（既定 `~/.config/pass-netsuper/profile/`、パーミッション 0700）
+- Cookie と localStorage だけを持ち出す方式にはしていない。
+  認証情報を IndexedDB に置く SPA では、それでは復元できないため
+- リポジトリ内のパスを `NETSUPER_PROFILE_DIR` に指定するとエラーで止まる（誤コミット防止）
+- ログインが切れたら `npm run netsuper:login` をやり直す
+- 確認は `npm run netsuper:login -- --check`。
+  ログアウトしているのか、店舗選択で止まっているのかまで表示する
+
+ログイン後に**お届け先や店舗の選択がある場合は、そこまで済ませてから** Enter を押す。
+商品一覧が見える状態まで進めておくと確実。
 
 ## 商品の取り出し方
 
@@ -110,9 +117,15 @@ URL のハッシュだけを変えても**ページが読み直されない**た
 
 それでも取りこぼす場合は `waitMs` を `3000`〜`5000` に増やす。
 
-うまく取れないときは `npm run netsuper:probe` を実行する。
-判定結果と、そのときの `page.html` / `page.png` が
-`reports/netsuper/probe-…/` に残るので、それを見てセレクタを詰められる。
+うまく取れないときは `npm run netsuper:probe -- --headed` を実行する。
+ブラウザが表示されるので、何の画面が出ているか目で確認できる。
+
+0件だった場合は、**そのとき画面に出ていた文言**をそのまま表示し、
+ログイン画面なのか・店舗選択なのか・描画待ちなのかを切り分ける。
+`reports/netsuper/probe-…/` に `page.html` / `page.txt` / `page.png` が残るので、
+あとから見返してセレクタを詰めることもできる。
+
+全カテゴリが0件になる場合は、セレクタではなくログイン状態か表示中の画面が原因のことが多い。
 
 セレクタを固定したい場合:
 
@@ -160,7 +173,7 @@ npm run netsuper:probe -- --save     # 判定できたセレクタを設定に�
 | 変数 | 既定 | 用途 |
 |---|---|---|
 | `NETSUPER_CONFIG` | `netsuper.config.json` | 設定ファイルの場所 |
-| `NETSUPER_SESSION` | `~/.config/pass-netsuper/session.json` | セッションの保存先（リポジトリ内は不可） |
+| `NETSUPER_PROFILE_DIR` | `~/.config/pass-netsuper/profile` | ログイン状態の保存先（リポジトリ内は不可） |
 | `NETSUPER_OUTPUT_DIR` | `reports/netsuper` | 出力先 |
 | `NETSUPER_CHROMIUM_PATH` | — | Chromium を自前で用意する場合の実行ファイル |
 | `NETSUPER_USER_AGENT` | Chrome 相当 | User-Agent を変えたい場合 |

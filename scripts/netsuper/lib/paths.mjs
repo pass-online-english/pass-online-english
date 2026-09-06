@@ -26,23 +26,31 @@ export function configExamplePath() {
   return path.join(REPO_ROOT, 'netsuper.config.example.json');
 }
 
-/**
- * ログインセッションの保存先。
- * リポジトリ内を指定された場合は事故防止のため拒否する。
- */
-export function sessionPath() {
-  const explicit = process.env.NETSUPER_SESSION;
-  const file = blank(explicit)
-    ? path.join(os.homedir(), '.config', 'pass-netsuper', 'session.json')
-    : expandHome(explicit);
-  const rel = path.relative(REPO_ROOT, file);
+/** リポジトリ内のパスを拒否する（認証情報を誤ってコミットする事故を防ぐ）。 */
+function assertOutsideRepo(target, envName) {
+  const rel = path.relative(REPO_ROOT, target);
   if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
     throw new Error(
-      `ログインセッションの保存先がリポジトリ内です（${file}）。\n` +
-        '  誤ってコミットする事故を防ぐため、リポジトリ外のパスを NETSUPER_SESSION に指定してください。'
+      `ログイン情報の保存先がリポジトリ内です（${target}）。\n` +
+        `  誤ってコミットする事故を防ぐため、リポジトリ外のパスを ${envName} に指定してください。`
     );
   }
-  return file;
+  return target;
+}
+
+/**
+ * ログイン状態を保持するブラウザプロファイルの置き場所。
+ *
+ * Cookie と localStorage だけを持ち出す方式では、認証情報を IndexedDB に
+ * 置く SPA でログイン状態を復元できない。ブラウザのプロファイルごと
+ * 使い回すことで、保存の仕組みに依存せずログイン状態を保てる。
+ */
+export function profileDir() {
+  const explicit = process.env.NETSUPER_PROFILE_DIR;
+  const dir = blank(explicit)
+    ? path.join(os.homedir(), '.config', 'pass-netsuper', 'profile')
+    : expandHome(explicit);
+  return assertOutsideRepo(dir, 'NETSUPER_PROFILE_DIR');
 }
 
 /** 収集結果の出力先ルート（reports/netsuper/）。 */
