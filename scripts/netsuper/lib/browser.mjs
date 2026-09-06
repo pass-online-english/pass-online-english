@@ -40,11 +40,24 @@ export function markLoggedIn() {
  * プロファイルを使い回すため、Cookie / localStorage / IndexedDB / Service Worker が
  * そのまま残る。認証情報をどこに置くサイトでもログイン状態を保てる。
  */
-export async function openBrowser({ headed = false } = {}) {
+/**
+ * 使うブラウザ。
+ * 既定は Playwright に同梱の Chromium。`chrome` を指定すると、
+ * パソコンにインストールされている Google Chrome を使う。
+ * 同梱の Chromium は描画まわりが簡素なため、それで動かないアプリがある。
+ */
+function browserChannel(channel) {
+  const value = (channel || process.env.NETSUPER_BROWSER_CHANNEL || '').trim();
+  return value || undefined;
+}
+
+export async function openBrowser({ headed = false, channel } = {}) {
   const dir = profileDir();
+  const wanted = browserChannel(channel);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try {
     return await chromium.launchPersistentContext(dir, {
+      channel: wanted,
       // NETSUPER_HEADLESS=1 は画面のない環境（検証用）で headed を打ち消すための逃げ道
       headless: process.env.NETSUPER_HEADLESS === '1' ? true : !headed,
       // Ctrl+C を Playwright に横取りさせない。記録済みの価格を保存してから終わるため
@@ -57,13 +70,20 @@ export async function openBrowser({ headed = false } = {}) {
       viewport: { width: 1280, height: 900 },
       userAgent: process.env.NETSUPER_USER_AGENT || DEFAULT_UA,
       // 実行環境に同梱の Chromium を使いたいときの逃げ道（CI / コンテナ用）
-      executablePath: process.env.NETSUPER_CHROMIUM_PATH || undefined,
+      executablePath: wanted ? undefined : process.env.NETSUPER_CHROMIUM_PATH || undefined,
     });
   } catch (err) {
-    if (/ProcessSingleton|SingletonLock|already (in use|running)/i.test(String(err.message))) {
+    const message = String(err.message);
+    if (/ProcessSingleton|SingletonLock|already (in use|running)/i.test(message)) {
       throw new Error(
         'このツールが開いたブラウザがまだ起動しています。\n' +
           '  そのウィンドウを閉じてから、もう一度実行してください。'
+      );
+    }
+    if (wanted && /executable doesn't exist|Chromium distribution|not found/i.test(message)) {
+      throw new Error(
+        `${wanted} が見つかりませんでした。\n` +
+          '  Google Chrome をインストールするか、--chrome を外して実行してください。'
       );
     }
     throw err;

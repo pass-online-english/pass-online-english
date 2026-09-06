@@ -128,7 +128,11 @@ export function buildSummary(rows, { store, collectedAt, categories }) {
 
 /** CLI 本体。selftest から import されたときは実行しない。 */
 export const run = async () => {
-  const values = parseCliArgs({ category: { type: 'string' }, headed: { type: 'boolean' } });
+  const values = parseCliArgs({
+    category: { type: 'string' },
+    headed: { type: 'boolean' },
+    chrome: { type: 'boolean' },
+  });
   if (values.help) { log(HELP); return; }
 
   const cfg = loadConfig();
@@ -145,7 +149,10 @@ export const run = async () => {
 
   section(`収集開始（${categories.length} カテゴリ）`);
   const collectedAt = today();
-  const context = await openBrowser({ headed: Boolean(values.headed || cfg.headed) });
+  const context = await openBrowser({
+    headed: Boolean(values.headed || cfg.headed),
+    channel: values.chrome ? 'chrome' : cfg.browserChannel,
+  });
   const raw = [];
   const failures = [];
   try {

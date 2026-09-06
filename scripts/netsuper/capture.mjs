@@ -71,7 +71,7 @@ function waitUntilClosed(context) {
 }
 
 export const run = async () => {
-  const values = parseCliArgs({ url: { type: 'string' } });
+  const values = parseCliArgs({ url: { type: 'string' }, chrome: { type: 'boolean' } });
   if (values.help) { log(HELP); return; }
 
   const cfg = configExists() ? loadConfig({ requireCategories: false }) : null;
@@ -89,7 +89,7 @@ export const run = async () => {
   log('    （ターミナルでのキー入力は不要です）');
   log('');
 
-  const context = await openBrowser({ headed: true });
+  const context = await openBrowser({ headed: true, channel: values.chrome ? 'chrome' : cfg?.browserChannel });
   let products = [];
   let entries = [];
   let timer;

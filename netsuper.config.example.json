@@ -8,6 +8,8 @@
   "headed": false,
   "_apiPattern": "商品データが載っている通信を絞る正規表現。空なら JSON の応答をすべて見る。",
   "apiPattern": "",
+  "_browserChannel": "chrome にすると同梱の Chromium ではなくパソコンの Google Chrome を使う。",
+  "browserChannel": "",
   "categories": [
     { "name": "野菜", "url": "https://twidy.jp/#/（野菜の売場を開いたときのURL）" },
     { "name": "精肉", "url": "https://twidy.jp/#/（精肉の売場を開いたときのURL）" },

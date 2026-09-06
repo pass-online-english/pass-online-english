@@ -94,6 +94,7 @@ main(async () => {
     url: { type: 'string' },
     check: { type: 'boolean' },
     headed: { type: 'boolean' },
+    chrome: { type: 'boolean' },
   });
   if (values.help) { log(HELP); return; }
   if (values.check) { await checkSession(values); return; }
@@ -105,7 +106,7 @@ main(async () => {
   log('  ログイン後、お届け先や店舗の選択があれば、そこまで済ませてください。');
   log('  商品一覧が見える状態にしてから Enter を押すのが確実です。\n');
 
-  const context = await openBrowser({ headed: true });
+  const context = await openBrowser({ headed: true, channel: values.chrome ? 'chrome' : undefined });
   try {
     const page = await firstPage(context);
     await page.goto(entryUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });

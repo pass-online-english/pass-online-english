@@ -40,6 +40,7 @@ main(async () => {
     save: { type: 'boolean' },
     headed: { type: 'boolean' },
     wait: { type: 'string' },
+    chrome: { type: 'boolean' },
   });
   if (values.help) { log(HELP); return; }
   const limit = parseLimit(values.limit, 8);
@@ -57,7 +58,10 @@ main(async () => {
   const waitMs = values.wait === undefined ? (cfg?.waitMs ?? 1500) : Number(values.wait);
   if (!Number.isFinite(waitMs) || waitMs < 0) throw new Error('--wait はミリ秒（0以上の数値）で指定してください。');
 
-  const context = await openBrowser({ headed: Boolean(values.headed || cfg?.headed) });
+  const context = await openBrowser({
+    headed: Boolean(values.headed || cfg?.headed),
+    channel: values.chrome ? 'chrome' : cfg?.browserChannel,
+  });
   let res;
   let dir;
   let bodyText = '';

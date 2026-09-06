@@ -18,6 +18,8 @@ export const DEFAULT_CONFIG = {
   headed: false,
   // 商品データが載っている通信を絞る正規表現（省略時は JSON の応答をすべて見る）
   apiPattern: '',
+  // 'chrome' にすると、同梱の Chromium ではなく Google Chrome を使う
+  browserChannel: '',
   categories: [],
   selectors: { item: '', name: '', price: '' },
   pagination: { mode: 'scroll', nextSelector: '', queryParam: 'page', maxPages: 20 },
