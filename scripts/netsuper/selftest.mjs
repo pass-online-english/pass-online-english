@@ -9,12 +9,14 @@
  * Chromium が無い環境ではブラウザ部分だけスキップする。
  */
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { extractPrices, pickPrice, extractUnit, nameKey, similarity, bestMatch } from './lib/price.mjs';
 import { parseCSV, parseStorePrices, toNumber } from './lib/csv.mjs';
 import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { pageExtract } from './lib/extract.mjs';
+import { isSameDocumentNavigation, openList, extractFromPage } from './lib/browser.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -366,6 +368,43 @@ const FIXTURES = [
   },
 ];
 
+/**
+ * `#/` で画面を切り替える SPA の再現。
+ * わざと hashchange を購読せず、読み直さないと表示が変わらない作りにしてある
+ * （twidy のようなハッシュルーティングのサイトで前の画面を拾う事故の再現）。
+ */
+const SPA_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>
+<div id="app"></div>
+<script>
+  var DATA = {
+    "#/a": [["りんご 1袋","198"],["みかん 5個","258"],["ぶどう 1房","498"]],
+    "#/b": [["牛乳 900ml","235"],["たまご 10個入","268"],["チーズ 6P","398"]]
+  };
+  function render() {
+    var items = DATA[location.hash] || [];
+    document.getElementById("app").innerHTML = items.map(function (it, i) {
+      return '<div class="card"><a class="nm" href="/i/' + i + '">' + it[0] + '</a>'
+           + '<p class="pr">' + it[1] + '円</p></div>';
+    }).join("");
+  }
+  setTimeout(render, 400);
+</script>
+</body></html>`;
+
+/** localhost だけで完結する一時サーバ（外部には接続しない）。 */
+function startFixtureServer() {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(SPA_HTML);
+    });
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      resolve({ server, base: `http://127.0.0.1:${port}/` });
+    });
+  });
+}
+
 async function runBrowserTests() {
   let chromium;
   try {
@@ -427,6 +466,39 @@ async function runBrowserTests() {
       assert.equal(res.count, 0);
     });
 
+    const fixture = await startFixtureServer();
+    try {
+      await asyncTest('#/ で画面を切り替えるサイトでもカテゴリごとに取り直せる', async () => {
+        const spa = await browser.newPage();
+        try {
+          await openList(spa, `${fixture.base}#/a`, { waitMs: 100 });
+          const a = await extractFromPage(spa, {});
+          assert.equal(a.count, 3, `1画面目が取れていません（${a.count} 件）`);
+          assert.equal(a.items[0].name, 'りんご 1袋');
+
+          await openList(spa, `${fixture.base}#/b`, { waitMs: 100 });
+          const b = await extractFromPage(spa, {});
+          assert.equal(b.items[0].name, '牛乳 900ml', 'ハッシュ遷移後も前の画面が残っています');
+        } finally {
+          await spa.close();
+        }
+      });
+
+      await asyncTest('描画が遅いページでも価格が出るまで待つ', async () => {
+        const spa = await browser.newPage();
+        try {
+          // setTimeout で 400ms 後に描画されるため、待たずに読むと 0 件になる
+          await openList(spa, `${fixture.base}#/a`, { waitMs: 0, scroll: false });
+          const res = await extractFromPage(spa, {});
+          assert.equal(res.count, 3);
+        } finally {
+          await spa.close();
+        }
+      });
+    } finally {
+      fixture.server.close();
+    }
+
     await asyncTest('自動判定したセレクタで同じ件数を取り直せる', async () => {
       await page.setContent(`<!doctype html><html lang="ja"><body>${FIXTURES[0].html}</body></html>`);
       const auto = await page.evaluate(pageExtract, { selectors: {} });
@@ -438,6 +510,24 @@ async function runBrowserTests() {
     await browser.close();
   }
 }
+
+console.log('\n── SPA（#/ で画面を切り替えるサイト）の遷移判定 ──');
+
+test('ハッシュだけが違うURLは同一ドキュメント遷移とみなす', () => {
+  assert.equal(isSameDocumentNavigation('https://x.test/#/a', 'https://x.test/#/b'), true);
+});
+
+test('パスが違えば通常の遷移', () => {
+  assert.equal(isSameDocumentNavigation('https://x.test/a', 'https://x.test/b'), false);
+});
+
+test('ホストが違えば通常の遷移', () => {
+  assert.equal(isSameDocumentNavigation('https://x.test/#/a', 'https://y.test/#/a'), false);
+});
+
+test('about:blank からの初回遷移は通常の遷移', () => {
+  assert.equal(isSameDocumentNavigation('about:blank', 'https://x.test/#/a'), false);
+});
 
 console.log('\n── 商品カードの自動判定（合成HTML） ──────────');
 await runBrowserTests();

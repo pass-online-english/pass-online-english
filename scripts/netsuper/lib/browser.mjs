@@ -50,12 +50,45 @@ export async function saveSession(context) {
 }
 
 /**
+ * ハッシュだけが違う遷移かどうか（https://example.com/#/a → https://example.com/#/b）。
+ *
+ * `#/…` で画面を切り替える SPA では、goto してもページが読み直されず、
+ * 前の画面の DOM がそのまま残ることがある。その場合は明示的に reload する。
+ */
+export function isSameDocumentNavigation(from, to) {
+  try {
+    const a = new URL(from);
+    const b = new URL(to);
+    return a.origin === b.origin && a.pathname === b.pathname && a.search === b.search && a.hash !== b.hash;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 価格らしきテキストが現れるまで待つ。
+ * SPA は HTML が空の状態で返ってきて、あとから JS が描画するため、
+ * domcontentloaded だけでは早すぎる。
+ */
+export async function waitForPrices(page, timeout = 15_000) {
+  await page.waitForFunction(
+    () => /(?:¥\s*\d|\d[\d,]*\s*円)/.test(document.body ? document.body.innerText : ''),
+    undefined,
+    { timeout, polling: 500 }
+  );
+}
+
+/**
  * 一覧ページを開いて描画を待つ。
  * ネットワークが落ち着かないサイトもあるため networkidle は待ちすぎない。
  */
 export async function openList(page, url, { waitMs = 1500, scroll = true } = {}) {
+  const sameDoc = isSameDocumentNavigation(page.url(), url);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  if (sameDoc) await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  // 価格が出てこないページ（ログイン画面など）でも止まらないよう、待てなければ先に進む
+  await waitForPrices(page).catch(() => {});
   await sleep(waitMs);
   if (scroll) {
     await page.evaluate(pageAutoScroll, {}).catch(() => {});
