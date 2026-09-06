@@ -55,20 +55,59 @@ export function assignCategories(products, categories = []) {
   });
 }
 
-/** ブラウザが閉じられるまで（または Ctrl+C まで）待つ。 */
+/**
+ * ブラウザが閉じられるまで（または Ctrl+C まで）待つ。
+ *
+ * 閉じ方は環境で違う（窓を閉じる / アプリを終了する / Ctrl+C）。
+ * どれでも確実に気づけるよう、複数の合図を見る。
+ */
 function waitUntilClosed(context) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (reason) => {
       if (done) return;
       done = true;
-      process.off('SIGINT', onSigint);
+      process.off('SIGINT', onSignal);
+      process.off('SIGTERM', onSignal);
+      clearInterval(poll);
       resolve(reason);
     };
-    const onSigint = () => finish('interrupt');
+    const onSignal = () => finish('interrupt');
+
     context.on('close', () => finish('closed'));
-    process.on('SIGINT', onSigint);
+    context.browser()?.on('disconnected', () => finish('disconnected'));
+    // 最後のタブが閉じられたときも終わりとみなす
+    const watchPage = (page) => page.on('close', () => {
+      if (context.pages().length === 0) finish('all-pages-closed');
+    });
+    context.pages().forEach(watchPage);
+    context.on('page', watchPage);
+    // 上のどれも来ないことがあるので、開いている窓の数も定期的に確かめる
+    const poll = setInterval(() => {
+      if (context.pages().length === 0) finish('no-pages');
+    }, 2000);
+
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
   });
+}
+
+/** 集めた商品をその場で保存する。何度呼んでもよい。 */
+function saveProducts(products, { cfg, dir, collectedAt }) {
+  const rows = toRows(assignCategories(products, cfg?.categories ?? []), { collectedAt });
+  if (!rows.length) return null;
+  fs.writeFileSync(path.join(dir, 'items.csv'), toCSV(rows, CSV_COLUMNS), 'utf8');
+  fs.writeFileSync(
+    path.join(dir, 'items.json'),
+    `${JSON.stringify({ store: cfg?.store ?? '', collectedAt, categories: [], items: rows }, null, 2)}\n`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(dir, 'summary.md'),
+    `${buildSummary(rows, { store: cfg?.store ?? '', collectedAt, categories: new Set(rows.map((r) => r.category)).size })}\n`,
+    'utf8'
+  );
+  return rows;
 }
 
 export const run = async () => {
@@ -86,16 +125,27 @@ export const run = async () => {
   log('  見たい売場を順に開き、下までスクロールすると、その分だけ記録されます。');
   log('  操作はすべてあなたが行います。ツールは受け取ったデータを記録するだけです。');
   log('');
-  log('  ■ 見終わったら「ブラウザの窓を閉じて」ください。そこで保存します。');
-  log('    （ターミナルでのキー入力は不要です）');
+  log('  ■ 見終わったら「ブラウザの窓を閉じて」ください。');
+  log('    集めた分は数秒ごとに自動で保存されるので、途中でやめても消えません。');
   log('');
+
+  const collectedAt = today();
+  const dir = ensureDir(values.out ? path.resolve(values.out) : path.join(outputRoot(), collectedAt));
 
   const context = await openBrowser({ headed: true, channel: values.chrome ? 'chrome' : cfg?.browserChannel });
   let products = [];
   let entries = [];
   let endpoints = [];
   let sockets = [];
+  let saved = 0;
   let timer;
+
+  // Ctrl+C でも、ブラウザを閉じても、集めた分は必ず残す
+  const flush = () => {
+    if (!products.length || saved === products.length) return;
+    if (saveProducts(products, { cfg, dir, collectedAt })) saved = products.length;
+  };
+  process.on('exit', flush);
   try {
     const page = await firstPage(context);
     // 商品が載っていそうな通信は、届いた時点で知らせる（進んでいるか分かるように）
@@ -115,11 +165,14 @@ export const run = async () => {
     // 同じ行を延々と出しても意味がないので、数が変わったときだけ出す
     let last = '';
     timer = setInterval(() => {
-      const n = capture.products(0).length;
-      const line = `  記録中… 商品 ${String(n).padStart(4)} 件 / 通信 ${String(capture.entries.length).padStart(4)} 件`;
+      products = capture.products(0);
+      const line = `  記録中… 商品 ${String(products.length).padStart(4)} 件 / 通信 ${String(capture.entries.length).padStart(4)} 件`;
       if (line === last) return;
       last = line;
       stdout.write(`${line}\n`);
+      const before = saved;
+      flush();
+      if (before === 0 && saved > 0) log(`  → 保存を始めました: ${relativeToCwd(path.join(dir, 'items.csv'))}`);
     }, 3000);
 
     await waitUntilClosed(context);
@@ -128,13 +181,11 @@ export const run = async () => {
     entries = capture.entries;
     endpoints = capture.endpoints;
     sockets = capture.sockets;
+    flush();
   } finally {
     clearInterval(timer);
     await context.close().catch(() => {});
   }
-
-  const collectedAt = today();
-  const dir = ensureDir(values.out ? path.resolve(values.out) : path.join(outputRoot(), collectedAt));
 
   if (!products.length) {
     // 何が届いていたのかを残す。値は書かず、項目名と型だけ（住所や氏名を残さないため）
@@ -170,18 +221,8 @@ export const run = async () => {
     return;
   }
 
-  const rows = toRows(assignCategories(products, cfg?.categories ?? []), { collectedAt });
-  fs.writeFileSync(path.join(dir, 'items.csv'), toCSV(rows, CSV_COLUMNS), 'utf8');
-  fs.writeFileSync(
-    path.join(dir, 'items.json'),
-    `${JSON.stringify({ store: cfg?.store ?? '', collectedAt, categories: [], items: rows }, null, 2)}\n`,
-    'utf8'
-  );
-  fs.writeFileSync(
-    path.join(dir, 'summary.md'),
-    `${buildSummary(rows, { store: cfg?.store ?? '', collectedAt, categories: new Set(rows.map((r) => r.category)).size })}\n`,
-    'utf8'
-  );
+  const rows = saveProducts(products, { cfg, dir, collectedAt }) ?? [];
+  saved = products.length;
 
   section('完了');
   log(`  商品 ${fmtNum(rows.length)} 件を保存しました: ${relativeToCwd(dir)}/`);
