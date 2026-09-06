@@ -126,6 +126,18 @@ export function extractProducts(json, { maxNodes = 200_000 } = {}) {
   const found = [];
   let visited = 0;
 
+  /** JSON が文字列として埋め込まれていることがある（キャッシュ用の塊など）。 */
+  const parseEmbedded = (text) => {
+    if (text.length < 24 || text.length > 2_000_000) return null;
+    const head = text.trimStart()[0];
+    if (head !== '{' && head !== '[') return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+
   const walk = (node) => {
     if (visited > maxNodes || node === null || typeof node !== 'object') return;
     visited += 1;
@@ -137,6 +149,10 @@ export function extractProducts(json, { maxNodes = 200_000 } = {}) {
     if (product) found.push(product);
     for (const value of Object.values(node)) {
       if (value && typeof value === 'object') walk(value);
+      else if (typeof value === 'string') {
+        const embedded = parseEmbedded(value);
+        if (embedded) walk(embedded);
+      }
     }
   };
   walk(json);

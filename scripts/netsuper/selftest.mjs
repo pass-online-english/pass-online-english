@@ -793,6 +793,13 @@ test('商品名と価格が別の階層に分かれていても読む', () => {
   assert.equal(p[0].price, 198);
 });
 
+test('JSON が文字列として埋め込まれていても読む', () => {
+  const inner = JSON.stringify({ items: [{ name: 'かぼちゃ 1/4', taxIncludedPrice: 198 }] });
+  const p = extractProducts({ data: { cachedCatalog: inner } });
+  assert.equal(p.length, 1);
+  assert.equal(p[0].price, 198);
+});
+
 test('名前だけ・価格だけのオブジェクトは商品とみなさない', () => {
   assert.equal(extractProducts({ user: { name: '八木' } }).length, 0);
   assert.equal(extractProducts({ cart: { totalPrice: 3200 } }).length, 0);

@@ -302,13 +302,16 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
   // 取り逃したときに原因が分かりにくい。絞りたい場合だけ pattern を渡す。
   const re = pattern ? new RegExp(pattern, 'i') : /./;
   const entries = [];
+  // 価格がどこから来ているか分からないとき用に、JSON 以外も含めて宛先だけ控える
+  const endpoints = [];
   let bytes = 0;
 
   const onResponse = async (response) => {
-    if (entries.length >= maxEntries || bytes > maxBytes) return;
     const url = response.url();
-    if (!re.test(url)) return;
     const type = response.headers()['content-type'] ?? '';
+    if (endpoints.length < 3000) endpoints.push(`${response.status()} ${type.split(';')[0] || '?'} ${url}`);
+    if (entries.length >= maxEntries || bytes > maxBytes) return;
+    if (!re.test(url)) return;
     if (!/json/i.test(type)) return;
     try {
       const text = await response.text();
@@ -323,8 +326,23 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
   };
 
   context.on('response', onResponse);
+  /** WebSocket は応答イベントに出てこないので、別に控える。 */
+  const sockets = [];
+  const onWebSocket = (ws) => {
+    const record = { url: ws.url(), received: 0, sample: '' };
+    sockets.push(record);
+    ws.on('framereceived', (frame) => {
+      record.received += 1;
+      if (!record.sample && typeof frame.payload === 'string') record.sample = frame.payload.slice(0, 200);
+    });
+  };
+  page.on('websocket', onWebSocket);
+  context.on('page', (p) => p.on('websocket', onWebSocket));
+
   return {
     entries,
+    endpoints,
+    sockets,
     /** これまでに記録した応答から商品を取り出す（from 以降だけを見る）。 */
     products(from = 0) {
       const out = [];
@@ -335,6 +353,7 @@ export function attachApiCapture(page, { pattern, maxEntries = 500, maxBytes = 8
     },
     detach() {
       context.off('response', onResponse);
+      page.off('websocket', onWebSocket);
     },
   };
 }

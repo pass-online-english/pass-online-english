@@ -92,6 +92,8 @@ export const run = async () => {
   const context = await openBrowser({ headed: true, channel: values.chrome ? 'chrome' : cfg?.browserChannel });
   let products = [];
   let entries = [];
+  let endpoints = [];
+  let sockets = [];
   let timer;
   try {
     const page = await firstPage(context);
@@ -123,6 +125,8 @@ export const run = async () => {
     clearInterval(timer);
     products = capture.products(0);
     entries = capture.entries;
+    endpoints = capture.endpoints;
+    sockets = capture.sockets;
   } finally {
     clearInterval(timer);
     await context.close().catch(() => {});
@@ -135,7 +139,15 @@ export const run = async () => {
     // 何が届いていたのかを残す。値は書かず、項目名と型だけ（住所や氏名を残さないため）
     fs.writeFileSync(
       path.join(dir, 'api-endpoints.txt'),
-      entries.map((e) => `${e.status} ${e.url}`).join('\n') || '(通信なし)',
+      [
+        '── JSON 以外も含む、すべての通信',
+        ...endpoints,
+        '',
+        '── WebSocket（応答イベントには出てこない通信）',
+        ...(sockets.length
+          ? sockets.map((w) => `${w.url}  受信 ${w.received} 回  先頭: ${w.sample.replace(/\s+/g, ' ')}`)
+          : ['(なし)']),
+      ].join('\n'),
       'utf8'
     );
     const shapes = entries
@@ -145,7 +157,7 @@ export const run = async () => {
     fs.writeFileSync(path.join(dir, 'api-shapes.txt'), shapes || '(記録なし)', 'utf8');
 
     section('商品が記録できませんでした');
-    log(`  記録した通信: ${entries.length} 件`);
+    log(`  記録した通信: JSON ${entries.length} 件 / 全体 ${endpoints.length} 件 / WebSocket ${sockets.length} 本`);
     log('  売場を開いて、下までスクロールしましたか？');
     log('  商品が画面に出る前に閉じると、まだデータが届いていません。');
     log('');
