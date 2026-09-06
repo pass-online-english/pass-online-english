@@ -60,6 +60,7 @@ main(async () => {
   let bodyText = '';
   let finalUrl = url;
   let frames = [];
+  let nav = null;
   // 未捕捉の例外は描画停止の直接原因になる。console のエラー（画像404など）は参考情報。
   const problems = { errors: [], console: [], failedRequests: [] };
   try {
@@ -73,7 +74,7 @@ main(async () => {
       problems.failedRequests.push(`${req.failure()?.errorText ?? 'failed'} ${req.url().slice(0, 120)}`);
     });
 
-    await openList(page, url, { waitMs });
+    nav = await openList(page, url, { waitMs });
     res = await extractFromPage(page, cfg?.selectors);
     finalUrl = page.url();
     frames = await describeFrames(page);
@@ -97,6 +98,7 @@ main(async () => {
   section('抽出結果');
   log(`  URL        : ${url}`);
   if (finalUrl !== url) log(`  遷移後URL  : ${finalUrl}（別の画面に飛ばされています）`);
+  if (nav) log(`  遷移方法   : ${nav.how}${nav.sawPrices ? '' : ' / 価格の表示は確認できず'}`);
   log(`  判定モード : ${res.mode}${res.signature ? `（署名: ${res.signature} / 深さ ${res.depth}）` : ''}`);
   log(`  商品件数   : ${res.count} 件`);
   if (res.selectors?.item) log(`  セレクタ   : ${res.selectors.item}`);

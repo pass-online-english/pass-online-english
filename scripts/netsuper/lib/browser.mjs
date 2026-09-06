@@ -85,6 +85,70 @@ export function isSameDocumentNavigation(from, to) {
   }
 }
 
+function parseUrl(u) {
+  try {
+    return new URL(u);
+  } catch {
+    return null;
+  }
+}
+
+/** 画面の中身が変わったかどうかを見るための指紋。 */
+async function contentSignature(page) {
+  return page
+    .evaluate(() => {
+      const body = document.body;
+      return `${body ? body.innerText.length : 0}:${document.querySelectorAll('*').length}`;
+    })
+    .catch(() => '');
+}
+
+/**
+ * SPA の起動を待つ。
+ *
+ * 「本文が空でなくなったら起動完了」では早すぎる。外枠の HTML に見出しが
+ * 入っているだけの段階でルータはまだ動いておらず、そこで画面遷移を指示しても
+ * 無視されて何も描画されない。DOM の変化が止まるまで待つ。
+ */
+async function waitForSettled(page, { interval = 300, stableRounds = 3, timeout = 20_000 } = {}) {
+  const deadline = Date.now() + timeout;
+  let last = null;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    await sleep(interval);
+    const sig = await contentSignature(page);
+    stable = sig && sig === last ? stable + 1 : 0;
+    last = sig;
+    if (stable >= stableRounds) return true;
+  }
+  return false;
+}
+
+/**
+ * ハッシュルーティングの画面遷移。
+ *
+ * アプリのルータに任せて `location.hash` を変える。これが本来の遷移経路で、
+ * ルータが初期化されないまま描画されない事故を避けられる。
+ * hashchange を見ていないアプリのために、変化しなければ読み直しに切り替える。
+ */
+async function navigateHash(page, target, { timeout = 8_000 } = {}) {
+  const before = await contentSignature(page);
+  await page.evaluate((hash) => {
+    window.location.hash = hash;
+  }, target.hash);
+
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    await sleep(300);
+    const now = await contentSignature(page);
+    if (now && now !== before) return 'router';
+  }
+
+  await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  return 'reload';
+}
+
 const PRICE_TEXT_RE = /(?:¥\s*\d|\d[\d,]*\s*円)/;
 
 /** フレーム内の本文テキスト（取れなければ空文字）。 */
@@ -122,7 +186,7 @@ export async function describeFrames(page) {
         elements: document.querySelectorAll('*').length,
         // Vue / React などのマウント先が空のままかどうか
         mountPoint: (() => {
-          const el = document.querySelector('#app, #root, [data-server-rendered], main');
+          const el = document.querySelector('#app, #root, [data-server-rendered], main, body > div');
           return el ? { selector: el.id ? `#${el.id}` : el.tagName.toLowerCase(), children: el.childElementCount } : null;
         })(),
       }))
@@ -136,18 +200,42 @@ export async function describeFrames(page) {
  * 一覧ページを開いて描画を待つ。
  * ネットワークが落ち着かないサイトもあるため networkidle は待ちすぎない。
  */
-export async function openList(page, url, { waitMs = 1500, scroll = true } = {}) {
-  const sameDoc = isSameDocumentNavigation(page.url(), url);
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  if (sameDoc) await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+export async function openList(page, url, { waitMs = 1500, scroll = true, hashTimeout = 8_000 } = {}) {
+  const target = new URL(url);
+  const hashRoute = target.hash.length > 1;
+  const current = parseUrl(page.url());
+  const sameApp =
+    Boolean(current) && current.origin === target.origin && current.pathname === target.pathname;
+
+  if (!sameApp) {
+    // `#/…` のURLをいきなり開くと、ルータが初期化されず何も描画しないアプリがある。
+    // まずアプリ本体（ハッシュ抜き）を開いて、起動を待ってから画面を切り替える。
+    const entry = hashRoute ? `${target.origin}${target.pathname}${target.search}` : url;
+    await page.goto(entry, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    if (hashRoute) await waitForSettled(page);
+  }
+
+  let how = sameApp ? 'そのまま' : hashRoute ? 'アプリを開いてから遷移' : '直接';
+  if (hashRoute && current?.hash === target.hash && sameApp) {
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+    how = '同じ画面を読み直し';
+  } else if (hashRoute) {
+    const via = await navigateHash(page, target, { timeout: hashTimeout });
+    how = `${how}（${via === 'router' ? 'ルータ' : '読み直し'}）`;
+  } else if (sameApp) {
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+    how = '読み直し';
+  }
+
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   // 価格が出てこないページ（ログイン画面など）でも止まらないよう、待てなければ先に進む
-  await waitForPrices(page);
+  const sawPrices = await waitForPrices(page);
   await sleep(waitMs);
   if (scroll) {
     await page.evaluate(pageAutoScroll, {}).catch(() => {});
     await sleep(600);
   }
+  return { how, sawPrices };
 }
 
 /**

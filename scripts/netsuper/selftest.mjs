@@ -370,10 +370,15 @@ const FIXTURES = [
 
 /**
  * `#/` で画面を切り替える SPA の再現。
- * わざと hashchange を購読せず、読み直さないと表示が変わらない作りにしてある
- * （twidy のようなハッシュルーティングのサイトで前の画面を拾う事故の再現）。
+ *
+ * `router` が true なら hashchange を購読する（普通のルータ）。
+ * false なら購読せず、読み直さないと表示が変わらない
+ * （ルータ任せの遷移が効かないアプリの再現）。
+ * どちらも起動時に見出しだけ描画し、売場の中身は 400ms 後に出す。
  */
-const SPA_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>
+function spaHtml({ router }) {
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>テスト店</title></head><body>
+<h1>テストネットスーパー</h1>
 <div id="app"></div>
 <script>
   var DATA = {
@@ -387,9 +392,46 @@ const SPA_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></h
            + '<p class="pr">' + it[1] + '円</p></div>';
     }).join("");
   }
+  ${router ? 'window.addEventListener("hashchange", function () { setTimeout(render, 100); });' : ''}
   setTimeout(render, 400);
 </script>
 </body></html>`;
+}
+
+/**
+ * `#/…` 付きのURLをいきなり開くと何も描画しないアプリの再現（twidy と同じ挙動）。
+ * ルータはアプリ本体を先に読み込まないと初期化されず、
+ * 起動後のハッシュ変更にだけ反応する。
+ */
+const COLD_SPA_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>テスト店</title></head><body>
+<h1>テストネットスーパー</h1>
+<div id="app"></div>
+<script>
+  var DATA = {
+    "#/a": [["りんご 1袋","198"],["みかん 5個","258"],["ぶどう 1房","498"]],
+    "#/b": [["牛乳 900ml","235"],["たまご 10個入","268"],["チーズ 6P","398"]]
+  };
+  var booted = false;
+  function render() {
+    var items = DATA[location.hash] || [];
+    document.getElementById("app").innerHTML = items.map(function (it, i) {
+      return '<div class="card"><a class="nm" href="/i/' + i + '">' + it[0] + '</a>'
+           + '<p class="pr">' + it[1] + '円</p></div>';
+    }).join("");
+  }
+  window.addEventListener("hashchange", function () {
+    if (booted) setTimeout(render, 100);
+  });
+  setTimeout(function () {
+    // ハッシュ付きで直接開かれた場合、ルータは初期化されるが描画はしない
+    booted = true;
+    if (!location.hash) render();
+  }, 300);
+</script>
+</body></html>`;
+
+const SPA_HTML = spaHtml({ router: false });
+const ROUTER_SPA_HTML = spaHtml({ router: true });
 
 /** 売場を iframe に入れているサイトの再現。 */
 const IFRAME_HOST_HTML = `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>
@@ -405,6 +447,8 @@ function startFixtureServer() {
       const body =
         pathname === '/host' ? IFRAME_HOST_HTML
         : pathname === '/inner' ? `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body>${FIXTURES[0].html}</body></html>`
+        : pathname === '/router' ? ROUTER_SPA_HTML
+        : pathname === '/cold' ? COLD_SPA_HTML
         : SPA_HTML;
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(body);
@@ -479,15 +523,46 @@ async function runBrowserTests() {
 
     const fixture = await startFixtureServer();
     try {
-      await asyncTest('#/ で画面を切り替えるサイトでもカテゴリごとに取り直せる', async () => {
+      await asyncTest('ルータに任せて #/ の売場を切り替えられる', async () => {
         const spa = await browser.newPage();
         try {
-          await openList(spa, `${fixture.base}#/a`, { waitMs: 100 });
+          await openList(spa, `${fixture.base}router#/a`, { waitMs: 100 });
           const a = await extractFromPage(spa, {});
           assert.equal(a.count, 3, `1画面目が取れていません（${a.count} 件）`);
           assert.equal(a.items[0].name, 'りんご 1袋');
 
-          await openList(spa, `${fixture.base}#/b`, { waitMs: 100 });
+          await openList(spa, `${fixture.base}router#/b`, { waitMs: 100 });
+          const b = await extractFromPage(spa, {});
+          assert.equal(b.items[0].name, '牛乳 900ml', 'ハッシュ遷移後も前の画面が残っています');
+        } finally {
+          await spa.close();
+        }
+      });
+
+      await asyncTest('#/… を直接開くと描画しないアプリでも売場を開ける', async () => {
+        const spa = await browser.newPage();
+        try {
+          await openList(spa, `${fixture.base}cold#/a`, { waitMs: 100 });
+          const a = await extractFromPage(spa, {});
+          assert.equal(a.count, 3, `売場が描画されていません（${a.count} 件）。アプリ本体を先に開けていない可能性`);
+          assert.equal(a.items[0].name, 'りんご 1袋');
+
+          await openList(spa, `${fixture.base}cold#/b`, { waitMs: 100 });
+          const b = await extractFromPage(spa, {});
+          assert.equal(b.items[0].name, '牛乳 900ml');
+        } finally {
+          await spa.close();
+        }
+      });
+
+      await asyncTest('hashchange を見ていないアプリは読み直して切り替える', async () => {
+        const spa = await browser.newPage();
+        try {
+          await openList(spa, `${fixture.base}#/a`, { waitMs: 100, hashTimeout: 1500 });
+          const a = await extractFromPage(spa, {});
+          assert.equal(a.items[0].name, 'りんご 1袋');
+
+          await openList(spa, `${fixture.base}#/b`, { waitMs: 100, hashTimeout: 1500 });
           const b = await extractFromPage(spa, {});
           assert.equal(b.items[0].name, '牛乳 900ml', 'ハッシュ遷移後も前の画面が残っています');
         } finally {
@@ -520,11 +595,11 @@ async function runBrowserTests() {
         }
       });
 
-      await asyncTest('描画が遅いページでも価格が出るまで待つ', async () => {
+      await asyncTest('外枠だけ描画された状態を「準備完了」と誤認しない', async () => {
         const spa = await browser.newPage();
         try {
-          // setTimeout で 400ms 後に描画されるため、待たずに読むと 0 件になる
-          await openList(spa, `${fixture.base}#/a`, { waitMs: 0, scroll: false });
+          // 見出しは即時、売場の中身は 400ms 後。待ちが甘いと商品が0件になる
+          await openList(spa, `${fixture.base}router#/a`, { waitMs: 0, scroll: false });
           const res = await extractFromPage(spa, {});
           assert.equal(res.count, 3);
         } finally {
