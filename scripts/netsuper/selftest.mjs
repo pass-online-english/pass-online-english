@@ -750,6 +750,25 @@ test('ありえない価格は採らない', () => {
   assert.equal(extractProducts({ items: [{ name: 'あやしい', price: 99999999 }] }).length, 0);
 });
 
+test('価格が入れ子で税込・税抜に分かれていても読む', () => {
+  const p = extractProducts({
+    items: [{ productName: 'キャベツ 1玉', price: { taxIncluded: 258, taxExcluded: 239 } }],
+  });
+  assert.equal(p.length, 1);
+  assert.equal(p[0].name, 'キャベツ 1玉');
+  assert.equal(p[0].price, 258);
+});
+
+test('項目名が想定外でも金額が1つなら読む', () => {
+  const p = extractProducts({ items: [{ itemTitle: 'ねぎ 1束', price: { jpy: 158 } }] });
+  assert.equal(p[0].price, 158);
+});
+
+test('個数や割合を金額と取り違えない', () => {
+  const p = extractProducts({ items: [{ name: 'あやしい', price: { quantity: 3, rate: 8 } }] });
+  assert.equal(p.length, 0);
+});
+
 test('toAmount は入れ子・文字列・全角を読む', () => {
   assert.equal(toAmount(198), 198);
   assert.equal(toAmount('1,280円'), 1280);

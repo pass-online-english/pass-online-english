@@ -10,7 +10,8 @@
  */
 import { normalizeText, extractUnit } from './price.mjs';
 
-const NAME_KEYS = /^(name|title|product_?name|display_?name|item_?name|goods_?name|label|商品名)$/i;
+const NAME_KEYS =
+  /^(name|title|label|商品名|品名|(product|item|goods|display|full|short)_?(name|title))$/i;
 const PRICE_KEYS = /(price|amount|kakaku|価格|値段)/i;
 const TAX_INCLUDED_KEYS = /(tax_?included|include[_]?tax|zeikomi|including_?tax|税込)/i;
 const TAX_EXCLUDED_KEYS = /(tax_?excluded|exclude[_]?tax|without_?tax|body_?price|税抜|本体)/i;
@@ -30,13 +31,26 @@ export function toAmount(value, depth = 0) {
     if (!/^\d+(\.\d+)?$/.test(s)) return null;
     return Number(s);
   }
-  // { amount: 298, currency: "JPY" } のような入れ子
-  if (value && typeof value === 'object' && depth < 2) {
-    for (const [k, v] of Object.entries(value)) {
+  if (value && typeof value === 'object' && depth < 3) {
+    const entries = Object.entries(value);
+    // price: { taxIncluded: 198, taxExcluded: 183 } の形は税込を採る
+    for (const [k, v] of entries) {
+      if (!TAX_INCLUDED_KEYS.test(k)) continue;
+      const n = toAmount(v, depth + 1);
+      if (n !== null) return n;
+    }
+    // { amount: 298, currency: "JPY" } の形
+    for (const [k, v] of entries) {
       if (!/(amount|value|price|gross|total)/i.test(k)) continue;
       const n = toAmount(v, depth + 1);
       if (n !== null) return n;
     }
+    // 項目名が想定外でも、金額として使える数値が1つだけならそれを使う
+    const numbers = entries
+      .filter(([k]) => !/(id|count|quantity|decimal|digit|rate|ratio|percent)/i.test(k))
+      .map(([, v]) => toAmount(v, depth + 1))
+      .filter((n) => n !== null && n > 0);
+    if (numbers.length === 1) return numbers[0];
   }
   return null;
 }
