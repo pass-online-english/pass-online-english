@@ -46,6 +46,9 @@ export async function openBrowser({ headed = false } = {}) {
   try {
     return await chromium.launchPersistentContext(dir, {
       headless: !headed,
+      // 画面をキャンバスに描くアプリ（Flutter など）は描画機能が無いと起動しない。
+      // 画面を出さない実行でもソフトウェア描画で動くようにしておく。
+      args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu-sandbox'],
       locale: 'ja-JP',
       timezoneId: 'Asia/Tokyo',
       viewport: { width: 1280, height: 900 },

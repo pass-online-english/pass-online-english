@@ -178,6 +178,8 @@ main(async () => {
     }
     section('アプリがサーバに聞いた内容');
     if (capture?.entries.length) log(`  （うち JSON を記録できたもの: ${capture.entries.length} 件 / 商品は見つからず）`);
+    const canvasApp = api.some((r) => /canvaskit|flutter/i.test(r));
+    const askedForProducts = api.some((r) => /graphql|\/api\//i.test(r) && !/googleapis|gstatic/i.test(r));
     if (!api.length) {
       log('  1件もありません。アプリがサーバに問い合わせる前の段階で止まっています。');
     } else {
@@ -201,12 +203,17 @@ main(async () => {
     } else if (mainFrame?.mountPoint && /loading|spinner|splash/i.test(mainFrame.mountPoint.selector)) {
       const failed = [...new Set(api)].filter((r) => !/^2\d\d /.test(r));
       log('  読み込み中の画面のまま止まっています。');
-      if (!api.length) {
-        log('  サーバへの問い合わせが1件もないため、アプリが起動しきっていません。');
-        log('  画面を表示するブラウザなら動く可能性があります（--headed を付けて試す）。');
-      } else if (failed.length) {
+      if (failed.length) {
         log('  サーバがエラーを返しています。ログインが切れている可能性があります。');
         log('  `npm run netsuper:login` をやり直してください。');
+      } else if (canvasApp && !askedForProducts) {
+        log('  画面をキャンバスに描くアプリ（Flutter）が、描画の準備で止まっています。');
+        log('  商品を取りに行く通信がまだ発生していません。');
+        log('  画面を表示するブラウザなら動くことが多いので、まず --headed を試してください。');
+        log('  うまくいったら netsuper.config.json に "headed": true を入れると、収集時も表示したまま動きます。');
+      } else if (!api.length) {
+        log('  サーバへの問い合わせが1件もないため、アプリが起動しきっていません。');
+        log('  画面を表示するブラウザなら動く可能性があります（--headed を付けて試す）。');
       } else {
         log('  サーバとのやり取りは成功しているのに描画されていません。');
         log('  --headed を付けて、画面に何が出ているか確認してください。');
