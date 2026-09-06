@@ -84,6 +84,20 @@ function readProduct(obj) {
       id = String(value);
     }
   }
+  // 商品名と価格が別の階層に分かれている形
+  //   { price: 198, product: { name: "トマト" } }
+  // にも対応する。1段だけ下を見る。
+  if (!name && prices.length) {
+    for (const value of Object.values(obj)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      for (const [k, v] of Object.entries(value)) {
+        if (!NAME_KEYS.test(k) || typeof v !== 'string') continue;
+        const t = normalizeText(v);
+        if (t && t.length <= 120 && !URL_LIKE.test(t)) { name = t; break; }
+      }
+      if (name) break;
+    }
+  }
   if (!name || !prices.length) return null;
 
   // 税込が明示されていればそれを、なければ税抜と明示されていないものを優先する

@@ -784,6 +784,15 @@ test('内容量の項目を拾い、無ければ商品名から補う', () => {
   assert.equal(products[1].unit, '1袋');
 });
 
+test('商品名と価格が別の階層に分かれていても読む', () => {
+  const p = extractProducts({
+    items: [{ taxIncludedPrice: 198, product: { name: 'トマト 1袋', id: 'x' } }],
+  });
+  assert.equal(p.length, 1);
+  assert.equal(p[0].name, 'トマト 1袋');
+  assert.equal(p[0].price, 198);
+});
+
 test('名前だけ・価格だけのオブジェクトは商品とみなさない', () => {
   assert.equal(extractProducts({ user: { name: '八木' } }).length, 0);
   assert.equal(extractProducts({ cart: { totalPrice: 3200 } }).length, 0);
