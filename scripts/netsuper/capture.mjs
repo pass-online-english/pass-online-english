@@ -92,10 +92,37 @@ function waitUntilClosed(context) {
   });
 }
 
+/** 商品の同一判定キー。id があれば id、無ければ売場と商品名。 */
+function rowKey(row) {
+  return row.id ? `id:${row.id}` : `name:${row.category}|${row.name}`;
+}
+
+/**
+ * 同じ日の収集結果と混ぜる。
+ *
+ * 「豆腐だけ見て閉じる → あとで残りの売場を見る」ができるように、
+ * 実行のたびに上書きせず積み上げる。同じ商品は新しいほう（今回の価格）を採る。
+ */
+export function mergeRows(previous, current) {
+  const byKey = new Map();
+  for (const row of [...previous, ...current]) byKey.set(rowKey(row), row);
+  return [...byKey.values()];
+}
+
+function readExistingRows(file) {
+  if (!fs.existsSync(file)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8')).items ?? [];
+  } catch {
+    return []; // 壊れていたら無視して作り直す
+  }
+}
+
 /** 集めた商品をその場で保存する。何度呼んでもよい。 */
-function saveProducts(products, { cfg, dir, collectedAt }) {
-  const rows = toRows(assignCategories(products, cfg?.categories ?? []), { collectedAt });
-  if (!rows.length) return null;
+function saveProducts(products, { cfg, dir, collectedAt, existing = [] }) {
+  const fresh = toRows(assignCategories(products, cfg?.categories ?? []), { collectedAt });
+  if (!fresh.length) return null;
+  const rows = mergeRows(existing, fresh);
   fs.writeFileSync(path.join(dir, 'items.csv'), toCSV(rows, CSV_COLUMNS), 'utf8');
   fs.writeFileSync(
     path.join(dir, 'items.json'),
@@ -141,9 +168,13 @@ export const run = async () => {
   let timer;
 
   // Ctrl+C でも、ブラウザを閉じても、集めた分は必ず残す
+  // 同じ日にすでに集めた分。今回の結果はこれに積み上げる
+  const existing = readExistingRows(path.join(dir, 'items.json'));
+  if (existing.length) log(`  今日はすでに ${existing.length} 件を集めています。今回の分を足していきます。\n`);
+
   const flush = () => {
     if (!products.length || saved === products.length) return;
-    if (saveProducts(products, { cfg, dir, collectedAt })) saved = products.length;
+    if (saveProducts(products, { cfg, dir, collectedAt, existing })) saved = products.length;
   };
   process.on('exit', flush);
   try {
@@ -221,11 +252,14 @@ export const run = async () => {
     return;
   }
 
-  const rows = saveProducts(products, { cfg, dir, collectedAt }) ?? [];
+  const rows = saveProducts(products, { cfg, dir, collectedAt, existing }) ?? [];
   saved = products.length;
 
   section('完了');
-  log(`  商品 ${fmtNum(rows.length)} 件を保存しました: ${relativeToCwd(dir)}/`);
+  log(
+    `  商品 ${fmtNum(rows.length)} 件を保存しました: ${relativeToCwd(dir)}/` +
+      (existing.length ? `（今回 ${fmtNum(rows.length - existing.length)} 件を追加）` : '')
+  );
   log('    items.csv   … 表計算で開く用');
   log('    summary.md  … カテゴリ別の概要');
   log('');

@@ -31,7 +31,7 @@ const HELP = `
 
 export const CSV_COLUMNS = [
   'collectedAt', 'category', 'name', 'price', 'priceKind', 'priceCandidates',
-  'unit', 'soldOut', 'url', 'source', 'sourceUrl', 'priceRaw',
+  'unit', 'soldOut', 'id', 'url', 'source', 'sourceUrl', 'priceRaw',
 ];
 
 /**
@@ -62,6 +62,7 @@ export function toRows(rawItems, { collectedAt = today() } = {}) {
       priceCandidates: (parsed.candidates || []).join('/'),
       unit: it.unit || extractUnit(it.rawText || name),
       soldOut: it.soldOut ? 1 : 0,
+      id: it.id || '',
       url: it.url || '',
       source: it.source || (fromApi ? 'api' : 'dom'),
       sourceUrl: it.sourceUrl || '',

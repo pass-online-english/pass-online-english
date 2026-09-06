@@ -15,7 +15,7 @@ import { parseCSV, parseStorePrices, toNumber } from './lib/csv.mjs';
 import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
-import { assignCategories } from './capture.mjs';
+import { assignCategories, mergeRows } from './capture.mjs';
 import { buildItemsMarkdown } from './table.mjs';
 import { pageExtract } from './lib/extract.mjs';
 import { extractProducts, dedupeProducts, toAmount } from './lib/apidata.mjs';
@@ -928,6 +928,41 @@ test('id が無ければ商品名でまとめる', () => {
     { name: '牛乳', price: 235 },
   ]);
   assert.equal(merged.length, 1);
+});
+
+console.log('\n── 同じ日の収集結果の積み上げ ────────────────');
+
+test('別の売場を集めると足される', () => {
+  const merged = mergeRows(
+    [{ id: 'P1', category: '豆腐', name: '木綿豆腐', price: 98 }],
+    [{ id: 'P2', category: '野菜', name: 'トマト', price: 198 }]
+  );
+  assert.equal(merged.length, 2);
+});
+
+test('同じ商品は今回の価格で置き換わる', () => {
+  const merged = mergeRows(
+    [{ id: 'P1', category: '豆腐', name: '木綿豆腐', price: 98 }],
+    [{ id: 'P1', category: '豆腐', name: '木綿豆腐', price: 108 }]
+  );
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].price, 108);
+});
+
+test('id が無ければ売場と商品名で同一とみなす', () => {
+  const merged = mergeRows(
+    [{ category: '豆腐', name: '木綿豆腐', price: 98 }],
+    [{ category: '豆腐', name: '木綿豆腐', price: 108 }]
+  );
+  assert.equal(merged.length, 1);
+});
+
+test('売場が違えば同じ商品名でも別扱い', () => {
+  const merged = mergeRows(
+    [{ category: '豆腐', name: '木綿豆腐', price: 98 }],
+    [{ category: '惣菜', name: '木綿豆腐', price: 128 }]
+  );
+  assert.equal(merged.length, 2);
 });
 
 console.log('\n── 一覧表の組み立て ──────────────────────────');
