@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseCliArgs, parseLimit } from '../analytics/lib/args.mjs';
 import { main, log, section, warn, isEntrypoint } from '../analytics/lib/cli.mjs';
-import { toCSV, mdTable, fmtNum, fmtPct } from '../analytics/lib/output.mjs';
+import { toCSV, mdTable, fmtNum, fmtPct, truncate } from '../analytics/lib/output.mjs';
 import { outputRoot, REPO_ROOT, relativeToCwd } from './lib/paths.mjs';
 import { parseStorePrices } from './lib/csv.mjs';
 import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
@@ -22,7 +22,10 @@ import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/comp
 const HELP = `
 収集済みの価格を、店頭価格メモ・前回の収集結果と比べます。
 
-  npm run netsuper:diff [-- --tolerance 10] [--yen 20] [--against <YYYY-MM-DD>] [--top 40]
+  npm run netsuper:diff [-- --tolerance 10] [--yen 20] [--min-score 0.8] [--against <YYYY-MM-DD>] [--top 40]
+
+  --min-score は商品名の一致の厳しさ（0〜1、既定 0.6）。
+  レシートの商品名が途中で切れている場合は 0.8 にすると誤マッチが減ります。
 `;
 
 const DEFAULT_STORE_PRICES = path.join(REPO_ROOT, 'data', 'netsuper', 'store-prices.csv');
@@ -163,6 +166,7 @@ export const run = async () => {
     yen: { type: 'string' },
     against: { type: 'string' },
     'store-prices': { type: 'string' },
+    'min-score': { type: 'string' },
   });
   if (values.help) { log(HELP); return; }
 
@@ -171,6 +175,12 @@ export const run = async () => {
   if (!Number.isFinite(tolerancePct) || tolerancePct < 0) throw new Error('--tolerance は0以上の数値（％）で指定してください。');
   if (!Number.isFinite(toleranceYen) || toleranceYen < 0) throw new Error('--yen は0以上の数値で指定してください。');
   const top = parseLimit(values.top, 40);
+  // 商品名の一致がここに満たないものは突き合わせない。
+  // レシートの商品名は途中で切れていることが多く、既定では別商品に当たることがある。
+  const minScore = values['min-score'] === undefined ? 0.6 : Number(values['min-score']);
+  if (!Number.isFinite(minScore) || minScore < 0 || minScore > 1) {
+    throw new Error('--min-score は 0〜1 の数値で指定してください（既定 0.6、厳しくするなら 0.8）。');
+  }
 
   const snapshots = listSnapshots();
   if (!snapshots.length) {
@@ -190,7 +200,9 @@ export const run = async () => {
   if (fs.existsSync(storeFile)) {
     const { items, errors } = parseStorePrices(fs.readFileSync(storeFile, 'utf8'));
     for (const e of errors) warn(`  店頭価格メモ: ${e}`);
-    if (items.length) storeResults = compareToStore(items, current.items, { tolerancePct, toleranceYen });
+    if (items.length) {
+      storeResults = compareToStore(items, current.items, { tolerancePct, toleranceYen, threshold: minScore });
+    }
   }
 
   const snapshotDiff = previous ? compareSnapshots(previous.items, current.items) : null;
@@ -218,8 +230,16 @@ export const run = async () => {
   if (storeResults) {
     const list = buyOnline(storeResults);
     log(`  店頭価格メモ ${storeResults.length} 件のうち、ネットで買ってよさそう: ${list.length} 件`);
-    for (const r of list.slice(0, 10)) {
-      log(`    ・${r.name}  店頭 ${yen(r.storePrice)} → ネット ${yen(r.netPrice)}（${signedYen(r.diff)}）`);
+    const weak = list.filter((r) => (r.matchScore ?? 1) < 0.8);
+    for (const r of list.slice(0, 15)) {
+      const flag = (r.matchScore ?? 1) < 0.8 ? ' ← 要確認' : '';
+      log(`    ・${r.name}  店頭 ${yen(r.storePrice)} → ネット ${yen(r.netPrice)}（${signedYen(r.diff)}）${flag}`);
+      log(`        ネット表示名: ${truncate(r.netName, 40)}${r.netUnit ? `  ${r.netUnit}` : ''}  一致度 ${r.matchScore}`);
+    }
+    if (weak.length) {
+      log('');
+      log(`  ※ 一致度 0.8 未満が ${weak.length} 件あります。別商品に当たっている可能性が高いので、`);
+      log('     ネット表示名を確認してください。厳しくするなら --min-score 0.8 を付けます。');
     }
   } else {
     log(`  店頭価格メモがありません: ${relativeToCwd(storeFile)}`);
