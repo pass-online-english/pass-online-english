@@ -17,7 +17,7 @@ import { main, log, section, warn, isEntrypoint } from '../analytics/lib/cli.mjs
 import { toCSV, mdTable, fmtNum, fmtPct, truncate } from '../analytics/lib/output.mjs';
 import { outputRoot, REPO_ROOT, relativeToCwd } from './lib/paths.mjs';
 import { parseStorePrices } from './lib/csv.mjs';
-import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
+import { compareToStore, compareSnapshots, buyOnline, needsCheck, VERDICT } from './lib/compare.mjs';
 
 const HELP = `
 収集済みの価格を、店頭価格メモ・前回の収集結果と比べます。
@@ -72,11 +72,12 @@ export function buildDiffMarkdown({ current, previous, storeResults, snapshotDif
       mdTable(list.slice(0, top), [
         { key: 'name', label: '商品（メモ）' },
         { key: 'netName', label: 'ネット表示名' },
+        { key: 'netUnit', label: '容量' },
         { key: 'storePrice', label: '店頭', align: 'right', format: yen },
         { key: 'netPrice', label: 'ネット', align: 'right', format: yen },
         { key: 'diff', label: '差', align: 'right', format: signedYen },
-        { key: 'diffPct', label: '差率', align: 'right', format: (v) => (v === null ? '—' : fmtPct(v, 1)) },
         { key: 'matchScore', label: '一致度', align: 'right' },
+        { key: 'check', label: '確認', format: (_v, row) => (needsCheck(row) ? '要' : '') },
       ]),
       '',
       '## 店頭で買ったほうがよさそうなもの',
@@ -106,7 +107,8 @@ export function buildDiffMarkdown({ current, previous, storeResults, snapshotDif
     }
     lines.push(
       '_一致度は商品名の近さ（1.00 が完全一致）。0.6 未満は突き合わせていません。_',
-      '_同じ商品名でも内容量が違えば価格差は当然生じます。unit 列も確認してください。_',
+      '_「確認」に「要」が付く行は、別商品に当たっているか内容量が違う可能性があります。_',
+      '_これは買うものを決めるための候補です。最終的な判断は表示名と容量を見て行ってください。_',
       ''
     );
   } else {
@@ -211,14 +213,15 @@ export const run = async () => {
 
   if (storeResults) {
     const rows = buyOnline(storeResults).map((r) => ({
+      確認: needsCheck(r) ? '要' : '',
       商品名: r.name,
       ネット表示名: r.netName,
+      内容量: r.netUnit,
       店頭価格: r.storePrice,
       ネット価格: r.netPrice,
       差額: r.diff,
-      内容量: r.netUnit,
-      カテゴリ: r.category,
       一致度: r.matchScore,
+      カテゴリ: r.category,
       URL: r.netUrl,
       メモ: r.note,
     }));

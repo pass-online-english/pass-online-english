@@ -56,11 +56,24 @@ export function compareToStore(storeItems, netItems, { tolerancePct = 0.1, toler
   return results;
 }
 
-/** 買い物リストに載せる行（安い or ほぼ同じ、かつ在庫あり）。 */
+/**
+ * 買い物リストに載せる行（安い or ほぼ同じ、かつ在庫あり）。
+ *
+ * 並び順は「商品名の一致が確かなもの」が先。差額の大きい順にすると、
+ * 別商品に当たった行（差が極端に大きい）が上に来てしまい、
+ * 目で確認するときに邪魔になる。
+ */
 export function buyOnline(results) {
   return results
     .filter((r) => r.verdict === VERDICT.CHEAPER || r.verdict === VERDICT.SAME)
-    .sort((a, b) => (a.diff ?? 0) - (b.diff ?? 0));
+    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || (a.diff ?? 0) - (b.diff ?? 0));
+}
+
+/** 目で確認したほうがよい行か（商品名の一致が弱い、または差が極端）。 */
+export function needsCheck(row, { weakScore = 0.8, bigGapPct = 0.5 } = {}) {
+  if ((row.matchScore ?? 1) < weakScore) return true;
+  if (row.diffPct !== null && Math.abs(row.diffPct) >= bigGapPct) return true;
+  return false;
 }
 
 /** 商品の同一判定キー。URL があれば URL、なければ正規化した商品名。 */

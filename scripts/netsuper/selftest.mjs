@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { extractPrices, pickPrice, extractUnit, nameKey, similarity, bestMatch } from './lib/price.mjs';
 import { parseCSV, parseStorePrices, toNumber } from './lib/csv.mjs';
-import { compareToStore, compareSnapshots, buyOnline, VERDICT } from './lib/compare.mjs';
+import { compareToStore, compareSnapshots, buyOnline, needsCheck, VERDICT } from './lib/compare.mjs';
 import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { assignCategories, mergeRows } from './capture.mjs';
@@ -219,12 +219,28 @@ test('価格が取れていない商品とは突き合わせない', () => {
   assert.equal(r[0].verdict, VERDICT.NO_MATCH);
 });
 
-test('買い物リストは差額の小さい（得な）順', () => {
+test('買い物リストは一致の確かな順、同じなら得な順', () => {
   const r = compareToStore(
     [{ name: 'A', storePrice: 200 }, { name: 'B', storePrice: 200 }],
     [{ name: 'A', price: 205, soldOut: false }, { name: 'B', price: 180, soldOut: false }]
   );
   assert.deepEqual(buyOnline(r).map((x) => x.name), ['B', 'A']);
+});
+
+test('名前の一致が弱い行は先頭に来ない（誤マッチが目立たないように）', () => {
+  const r = compareToStore(
+    [{ name: 'カヴァ・ピュピトレ', storePrice: 1372 }, { name: 'トマト 1袋', storePrice: 205 }],
+    [{ name: 'カルピス 白 500ml', price: 257, soldOut: false }, { name: 'トマト 1袋', price: 198, soldOut: false }],
+    { threshold: 0.3 }
+  );
+  const list = buyOnline(r);
+  assert.equal(list[0].name, 'トマト 1袋', '一致度の高い行が先頭に来ていません');
+});
+
+test('要確認の判定：名前の一致が弱い / 差が極端', () => {
+  assert.equal(needsCheck({ matchScore: 0.62, diffPct: -0.1 }), true);
+  assert.equal(needsCheck({ matchScore: 1, diffPct: -0.9 }), true);
+  assert.equal(needsCheck({ matchScore: 1, diffPct: -0.05 }), false);
 });
 
 console.log('\n── 前回との比較 ──────────────────────────────');
