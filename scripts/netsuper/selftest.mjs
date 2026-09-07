@@ -316,6 +316,13 @@ test('差分レポートは店頭価格メモが無くても生成できる', ()
   assert.ok(md.includes('店頭価格メモがありません'));
 });
 
+test('全品目の比較には見つからなかったものも含む', () => {
+  const results = compareToStore(STORE, NET);
+  const verdicts = new Set(results.map((r) => r.verdict));
+  assert.equal(results.length, STORE.length, '店頭価格メモの全品目が結果に入っていません');
+  assert.ok(verdicts.has(VERDICT.NO_MATCH), '見つからなかったものが落ちています');
+});
+
 test('差分レポートに買い物リストが載る', () => {
   const md = buildDiffMarkdown({
     current: { date: '2026-09-06', store: 'テスト店', items: NET },

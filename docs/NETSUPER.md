@@ -59,6 +59,7 @@ npm run netsuper:diff
 | `summary.md` | カテゴリ別の件数と平均価格 |
 | `diff.md` | 買い物リストと前回からの変化 |
 | `buy-online.csv` | 「ネットで買ってよさそう」だけを抜いたもの |
+| `store-compare.csv` | 店頭価格メモに書いた**全品目**の比較（判定つき） |
 
 ## 自動で回れないとき（capture）
 

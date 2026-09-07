@@ -212,6 +212,25 @@ export const run = async () => {
   fs.writeFileSync(path.join(current.dir, 'diff.md'), `${md}\n`, 'utf8');
 
   if (storeResults) {
+    // 全品目の比較結果。判定を問わず、店頭価格メモに書いた分をすべて出す
+    const allRows = [...storeResults]
+      .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || (a.diff ?? 0) - (b.diff ?? 0))
+      .map((r) => ({
+        判定: r.verdict,
+        確認: needsCheck(r) ? '要' : '',
+        商品名: r.name,
+        ネット表示名: r.netName ?? '',
+        内容量: r.netUnit ?? '',
+        店頭価格: r.storePrice,
+        ネット価格: r.netPrice ?? '',
+        差額: r.diff ?? '',
+        差率: r.diffPct === null || r.diffPct === undefined ? '' : `${(r.diffPct * 100).toFixed(1)}%`,
+        一致度: r.matchScore ?? '',
+        カテゴリ: r.category ?? '',
+        メモ: r.note,
+      }));
+    fs.writeFileSync(path.join(current.dir, 'store-compare.csv'), toCSV(allRows), 'utf8');
+
     const rows = buyOnline(storeResults).map((r) => ({
       確認: needsCheck(r) ? '要' : '',
       商品名: r.name,
@@ -252,7 +271,12 @@ export const run = async () => {
         `値上がり ${snapshotDiff.changed.filter((c) => c.diff > 0).length} 件 / ` +
         `新登場 ${snapshotDiff.added.length} 件`);
   }
-  log(`\n  レポート: ${relativeToCwd(path.join(current.dir, 'diff.md'))}`);
+  log('');
+  log(`  レポート    : ${relativeToCwd(path.join(current.dir, 'diff.md'))}`);
+  if (storeResults) {
+    log(`  買い物リスト: ${relativeToCwd(path.join(current.dir, 'buy-online.csv'))}（買ってよさそうな分だけ）`);
+    log(`  全品目の比較: ${relativeToCwd(path.join(current.dir, 'store-compare.csv'))}（メモに書いた全品目）`);
+  }
 };
 
 if (isEntrypoint(import.meta.url)) main(run);
