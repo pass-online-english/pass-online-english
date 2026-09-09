@@ -51,6 +51,22 @@ reports/              分析結果の出力先（.gitignore 済み）
 
 詳細は `docs/ANALYTICS.md`。
 
+## Anki デッキを作る・直すとき
+
+生徒に配る Anki デッキには命名規則がある（`docs/ANKI_DECK_RULES.md`）。
+デッキ名は `2026-09-06 授業復習` の形式、階層は2段まで、日付は
+「カードを作った日」ではなく「その教材がどの授業のものか」を表す。
+
+生成・修正したら必ず検品する。
+
+```bash
+python3 scripts/anki/check_deck.py deck.apkg
+```
+
+既存デッキを編集するときに書き換えてよいのは `decks.name` と `cards.did` だけ。
+`revlog` とカードのスケジュール列に触ると学習履歴が消える。
+詳細は `.claude/skills/anki-deck/SKILL.md`。
+
 ## 分析するときの原則
 
 - **原因を断定しない。** API から確認できるのは数値だけ。
