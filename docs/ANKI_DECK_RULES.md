@@ -2,6 +2,8 @@
 
 生徒に配布する Anki デッキ（`.apkg`）を AI に生成させるときの仕様。
 生成のたびにこのファイルの「AI に渡す指示」の節をそのまま貼り付ける。
+claude.ai で生成している場合は、`docs/ANKI_DECK_PROJECT_INSTRUCTIONS.md` を
+プロジェクトのカスタム指示かスキルに設定しておけば、毎回貼らずに済む。
 
 生成物の検品は `scripts/anki/check_deck.py` で行う（`docs/ANKI_DECK_CHECK.md` 参照）。
 
