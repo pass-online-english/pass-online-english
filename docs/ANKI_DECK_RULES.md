@@ -5,7 +5,7 @@
 claude.ai で生成している場合は、`docs/ANKI_DECK_PROJECT_INSTRUCTIONS.md` を
 プロジェクトのカスタム指示かスキルに設定しておけば、毎回貼らずに済む。
 
-生成物の検品は `scripts/anki/check_deck.py` で行う（`docs/ANKI_DECK_CHECK.md` 参照）。
+生成物の検品は `scripts/anki/check_deck.py` で行う（末尾の「生成後の確認」を参照）。
 
 ## なぜ規則が必要か
 
