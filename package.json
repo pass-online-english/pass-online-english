@@ -20,6 +20,7 @@
     "analytics:selftest": "node scripts/analytics/selftest.mjs",
     "netsuper:login": "node scripts/netsuper/login.mjs",
     "netsuper:probe": "node scripts/netsuper/probe.mjs",
+    "netsuper:categories": "node scripts/netsuper/categories.mjs",
     "netsuper:capture": "node scripts/netsuper/capture.mjs",
     "netsuper:scrape": "node scripts/netsuper/scrape.mjs",
     "netsuper:table": "node scripts/netsuper/table.mjs",

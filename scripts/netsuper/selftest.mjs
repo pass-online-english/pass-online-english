@@ -17,6 +17,7 @@ import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { assignCategories, mergeRows } from './capture.mjs';
 import { buildItemsMarkdown } from './table.mjs';
+import { collectCategories, decodeGlobalId, applyCategoryTemplate } from './lib/categories.mjs';
 import { pageExtract } from './lib/extract.mjs';
 import { extractProducts, dedupeProducts, toAmount } from './lib/apidata.mjs';
 import {
@@ -986,6 +987,71 @@ test('売場が違えば同じ商品名でも別扱い', () => {
     [{ category: '惣菜', name: '木綿豆腐', price: 128 }]
   );
   assert.equal(merged.length, 2);
+});
+
+console.log('\n── 売場一覧の自動取得 ────────────────────────');
+
+const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
+
+test('Relay の ID から種別を読む', () => {
+  assert.deepEqual(decodeGlobalId(b64('Category:9')), { type: 'Category', value: '9' });
+  assert.deepEqual(decodeGlobalId(b64('Product:1')), { type: 'Product', value: '1' });
+  assert.equal(decodeGlobalId('ただの文字列'), null);
+  assert.equal(decodeGlobalId(null), null);
+});
+
+test('受信データから売場だけを拾う（商品は拾わない）', () => {
+  const payload = {
+    data: {
+      menu: {
+        items: [
+          { id: b64('Category:1'), name: '野菜・果物' },
+          { id: b64('Category:49'), name: '豆腐・納豆' },
+          { id: b64('Product:1'), name: 'トマト 1袋' },
+        ],
+      },
+    },
+  };
+  const found = collectCategories([payload]);
+  assert.equal(found.length, 2);
+  assert.deepEqual(found.map((c) => c.name).sort(), ['豆腐・納豆', '野菜・果物']);
+});
+
+test('小分類も入れ子から拾う', () => {
+  const payload = {
+    data: {
+      menu: {
+        items: [
+          {
+            id: b64('Category:49'),
+            name: '豆腐・納豆',
+            children: [
+              { id: b64('Category:50'), name: '納豆' },
+              { id: b64('Category:51'), name: '豆腐・油揚げ' },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  assert.equal(collectCategories([payload]).length, 3);
+});
+
+test('同じ売場は1件にまとめる', () => {
+  const one = { id: b64('Category:1'), name: '野菜・果物' };
+  assert.equal(collectCategories([{ a: one }, { b: one }]).length, 1);
+});
+
+test('名前のない売場は採らない', () => {
+  assert.equal(collectCategories([{ id: b64('Category:1') }]).length, 0);
+});
+
+test('既知のURLを雛形にして売場URLを組み立てる', () => {
+  const urls = applyCategoryTemplate(
+    [{ id: 'Q2F0ZWdvcnk6OQ==', name: '肉' }],
+    'https://twidy.jp/#/category/bunkado_toyosu/Q2F0ZWdvcnk6MQ=='
+  );
+  assert.equal(urls[0].url, 'https://twidy.jp/#/category/bunkado_toyosu/Q2F0ZWdvcnk6OQ==');
 });
 
 console.log('\n── 一覧表の組み立て ──────────────────────────');

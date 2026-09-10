@@ -14,6 +14,7 @@
 | 一覧ページから取り出せるか試す | `npm run netsuper:probe` |
 | 全カテゴリを巡回して価格を集める | `npm run netsuper:scrape` |
 | 自分で見て回りながら価格を記録する | `npm run netsuper:capture` |
+| 売場の一覧を自動で設定に取り込む | `npm run netsuper:categories` |
 | 集めた結果を表で見る | `npm run netsuper:table` |
 | 店頭価格・前回と比べる | `npm run netsuper:diff` |
 | ロジックの自己テスト（接続なし） | `npm run netsuper:selftest` |
@@ -60,6 +61,22 @@ npm run netsuper:diff
 | `diff.md` | 買い物リストと前回からの変化 |
 | `buy-online.csv` | 「ネットで買ってよさそう」だけを抜いたもの |
 | `store-compare.csv` | 店頭価格メモに書いた**全品目**の比較（判定つき） |
+
+## 売場の一覧を自動で取り込む
+
+売場が数十あると URL を手で集めるのは現実的でない。
+アプリはメニュー表示のために売場一覧を受け取っているので、それを拾う。
+
+```bash
+npm run netsuper:categories            # ブラウザで売場メニューを開くと記録される
+npm run netsuper:categories -- --dry-run  # 設定を書き換えず一覧だけ見る
+```
+
+URL は**設定にすでにある売場URLを雛形**にして、ID の部分だけ差し替える。
+URL の形は推測しない。雛形が無い場合はエラーで止まるので、
+売場を1つ開いたときのURLを先に `categories` に入れておく。
+
+不要な売場は設定で `"disabled": true` を付けると飛ばせる。
 
 ## 自動で回れないとき（capture）
 
