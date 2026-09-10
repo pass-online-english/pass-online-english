@@ -17,7 +17,7 @@ import { main, log, section, isEntrypoint } from '../analytics/lib/cli.mjs';
 import { loadConfig, saveConfig, configExists } from './lib/config.mjs';
 import { configPath, relativeToCwd } from './lib/paths.mjs';
 import { openBrowser, firstPage, attachApiCapture, sleep } from './lib/browser.mjs';
-import { collectCategories, applyCategoryTemplate } from './lib/categories.mjs';
+import { collectCategories, collectByIdType, applyCategoryTemplate } from './lib/categories.mjs';
 
 const HELP = `
 売場の一覧をアプリから拾って設定に書き込みます。
@@ -56,6 +56,7 @@ export const run = async () => {
 
   const context = await openBrowser({ headed: true, channel: cfg.browserChannel });
   let found = [];
+  let byType = new Map();
   try {
     const page = await firstPage(context);
     const capture = attachApiCapture(page, { pattern: cfg.apiPattern, maxEntries: 2000 });
@@ -67,7 +68,8 @@ export const run = async () => {
     let last = 0;
     while (Date.now() < deadline && !closed) {
       await sleep(3000);
-      found = collectCategories(capture.entries.map((e) => e.json));
+      byType = collectByIdType(capture.entries.map((e) => e.json));
+      found = byType.get('Category') ?? [];
       if (found.length !== last) {
         last = found.length;
         log(`  売場 ${found.length} 件を確認`);
@@ -79,8 +81,18 @@ export const run = async () => {
 
   if (!found.length) {
     section('売場を見つけられませんでした');
-    log('  左側の売場メニューを開きましたか？ 開くとアプリが一覧を取りに行きます。');
-    log('  `npm run netsuper:categories -- --wait 90` で待ち時間を延ばせます。');
+    if (byType.size) {
+      log('  受信データに入っていた ID の種別:');
+      for (const [type, items] of [...byType].sort((a, b) => b[1].length - a[1].length)) {
+        const sample = items.slice(0, 3).map((i) => i.name).join(' / ');
+        log(`    ${type.padEnd(14)} ${String(items.length).padStart(4)} 件  ${sample}`);
+      }
+      log('\n  この一覧を共有してもらえれば、どれが売場かを特定できます。');
+    } else {
+      log('  受信データに ID を持つものがありませんでした。');
+      log('  左側の売場メニューを開きましたか？ 開くとアプリが一覧を取りに行きます。');
+    }
+    log('\n  `npm run netsuper:categories -- --wait 90` で待ち時間を延ばせます。');
     process.exitCode = 1;
     return;
   }

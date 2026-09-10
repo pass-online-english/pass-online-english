@@ -17,7 +17,7 @@ import { toRows, buildSummary } from './scrape.mjs';
 import { buildDiffMarkdown } from './diff.mjs';
 import { assignCategories, mergeRows } from './capture.mjs';
 import { buildItemsMarkdown } from './table.mjs';
-import { collectCategories, decodeGlobalId, applyCategoryTemplate } from './lib/categories.mjs';
+import { collectCategories, collectByIdType, decodeGlobalId, applyCategoryTemplate } from './lib/categories.mjs';
 import { pageExtract } from './lib/extract.mjs';
 import { extractProducts, dedupeProducts, toAmount } from './lib/apidata.mjs';
 import {
@@ -1044,6 +1044,31 @@ test('同じ売場は1件にまとめる', () => {
 
 test('名前のない売場は採らない', () => {
   assert.equal(collectCategories([{ id: b64('Category:1') }]).length, 0);
+});
+
+test('文字列として埋め込まれた売場一覧も読む', () => {
+  // twidyCacheMenu のように、JSON が文字列で入っていることがある
+  const cached = JSON.stringify({
+    items: [
+      { id: b64('Category:1'), name: '野菜・果物' },
+      { id: b64('Category:49'), name: '豆腐・納豆', children: [{ id: b64('Category:50'), name: '納豆' }] },
+    ],
+  });
+  const found = collectCategories([{ data: { twidyCacheMenu: cached } }]);
+  assert.equal(found.length, 3, `埋め込みJSONから読めていません（${found.length} 件）`);
+});
+
+test('ID の種別ごとに数えられる（0件の原因切り分け用）', () => {
+  const payload = {
+    data: {
+      twidyMenu: { items: [{ id: b64('MenuItem:3'), name: 'おすすめ' }] },
+      products: { edges: [{ node: { id: b64('Product:1'), name: 'トマト' } }] },
+    },
+  };
+  const byType = collectByIdType([payload]);
+  assert.equal(byType.get('MenuItem').length, 1);
+  assert.equal(byType.get('Product').length, 1);
+  assert.equal(byType.get('Category'), undefined);
 });
 
 test('既知のURLを雛形にして売場URLを組み立てる', () => {
