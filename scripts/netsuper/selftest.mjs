@@ -1071,6 +1071,21 @@ test('ID の種別ごとに数えられる（0件の原因切り分け用）', (
   assert.equal(byType.get('Category'), undefined);
 });
 
+test('雛形の仮の名前が正しい売場名を上書きしない', () => {
+  // 設定の雛形が { name: "野菜", url: X } のとき、取得した "野菜・果物" が
+  // "野菜" に戻ってしまう不具合があった
+  const discovered = applyCategoryTemplate(
+    [{ id: 'Q2F0ZWdvcnk6MQ==', name: '野菜・果物' }],
+    'https://twidy.jp/#/category/shop/Q2F0ZWdvcnk6MQ=='
+  );
+  const previous = new Map([[discovered[0].url, { name: '野菜', url: discovered[0].url }]]);
+  const merged = discovered.map((c) => {
+    const before = previous.get(c.url);
+    return before?.disabled ? { ...c, disabled: true } : c;
+  });
+  assert.equal(merged[0].name, '野菜・果物');
+});
+
 test('既知のURLを雛形にして売場URLを組み立てる', () => {
   const urls = applyCategoryTemplate(
     [{ id: 'Q2F0ZWdvcnk6OQ==', name: '肉' }],

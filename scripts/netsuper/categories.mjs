@@ -106,9 +106,13 @@ export const run = async () => {
     return;
   }
 
-  // すでに設定にある売場の指定（disabled など）は残す
+  // すでに設定にある売場の指定（disabled など）だけを引き継ぐ。
+  // 以前の設定を丸ごと優先すると、雛形に付けた仮の名前が正しい売場名を上書きしてしまう。
   const previous = new Map(cfg.categories.map((c) => [c.url, c]));
-  cfg.categories = categories.map((c) => ({ ...c, ...previous.get(c.url) }));
+  cfg.categories = categories.map((c) => {
+    const before = previous.get(c.url);
+    return before?.disabled ? { ...c, disabled: true } : c;
+  });
   const file = saveConfig(cfg);
   log(`\n  設定に書き込みました: ${relativeToCwd(file)}`);
   log('  不要な売場は "disabled": true を付けると飛ばせます。');

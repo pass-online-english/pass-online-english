@@ -144,8 +144,12 @@ export const run = async () => {
 
   let categories = cfg.categories;
   if (values.category) {
-    categories = categories.filter((c) => c.name.includes(values.category));
+    // 売場名がそのまま一致するものを優先する。無ければ部分一致に落とす
+    // （「野菜・果物」で「冷凍野菜・果物」まで拾ってしまうのを避けるため）
+    const exact = categories.filter((c) => c.name === values.category);
+    categories = exact.length ? exact : categories.filter((c) => c.name.includes(values.category));
     if (!categories.length) throw new Error(`--category "${values.category}" に一致するカテゴリがありません。`);
+    log(`  対象: ${categories.map((c) => c.name).join(' / ')}`);
   }
 
   section(`収集開始（${categories.length} カテゴリ）`);
